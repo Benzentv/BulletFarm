@@ -900,7 +900,9 @@ function renderAdminTheme(){
   };
 }
 
-/* ========= Admin: Orders (list) ========= */
+/* ========= Admin: Orders (list + Status ändern) ========= */
+let ordersCache = [];
+
 function renderAdminOrders(){
   const el = document.getElementById("panelOrders");
   el.innerHTML = `
@@ -911,7 +913,7 @@ function renderAdminOrders(){
       </div>
       <div class="body" style="overflow:auto">
         <table>
-          <thead><tr><th>Zeit</th><th>Status</th><th>ID</th></tr></thead>
+          <thead><tr><th>Zeit</th><th>ID</th><th>Status</th><th>Aktion</th></tr></thead>
           <tbody id="ordersTable"></tbody>
         </table>
       </div>
@@ -919,6 +921,45 @@ function renderAdminOrders(){
   `;
   document.getElementById("btnLoadOrders").onclick = loadOrders;
 }
+
+async function loadOrders(){
+  const tb = document.getElementById("ordersTable");
+  tb.innerHTML = `<tr><td colspan="4" class="muted">Lade…</td></tr>`;
+
+  const r = await sb.from("orders").select("*").order("created_at", {ascending:false});
+  if(r.error){
+    console.error(r.error);
+    tb.innerHTML = `<tr><td colspan="4" class="muted">Fehler (RLS?)</td></tr>`;
+    return;
+  }
+
+  ordersCache = r.data || [];
+  tb.innerHTML = ordersCache.length ? "" : `<tr><td colspan="4" class="muted">Keine Bestellungen</td></tr>`;
+
+  ordersCache.forEach(o=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${new Date(o.created_at).toLocaleString("de-DE")}</td>
+      <td class="muted">${String(o.id).slice(0,8)}</td>
+      <td><b>${o.status || "offen"}</b></td>
+      <td style="display:flex; gap:6px; flex-wrap:wrap">
+        <button class="success" data-st="bearbeitet" data-id="${o.id}">bearbeitet</button>
+        <button data-st="offen" data-id="${o.id}">offen</button>
+        <button class="danger" data-st="storniert" data-id="${o.id}">storniert</button>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+
+  tb.querySelectorAll("[data-st]").forEach(b=>b.onclick=async ()=>{
+    const id = b.getAttribute("data-id");
+    const status = b.getAttribute("data-st");
+    const u = await sb.from("orders").update({ status }).eq("id", id);
+    if(u.error){ console.error(u.error); alert("Status speichern fehlgeschlagen (RLS?)"); return; }
+    await loadOrders();
+  });
+}
+
 
 async function loadOrders(){
   const tb = document.getElementById("ordersTable");
