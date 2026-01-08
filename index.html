@@ -354,6 +354,41 @@ let sb = null;
 ================================ */
 const $ = (q)=>document.querySelector(q);
 
+// ===== EMERGENCY CLICK BINDINGS (läuft auch wenn später JS crasht) =====
+window.addEventListener("DOMContentLoaded", () => {
+  console.log("✅ Emergency bindings loaded");
+
+  const shopBtn = document.getElementById("tabShop");
+  const cartBtn = document.getElementById("tabCart");
+  const adminBtn = document.getElementById("tabAdmin");
+
+  function setTabSafe(t){
+    const shopCard = document.getElementById("shopCard");
+    const cartCard = document.getElementById("cartCard");
+    const adminCard = document.getElementById("adminCard");
+
+    if(!shopCard || !cartCard || !adminCard){
+      console.error("❌ Cards not found", {shopCard, cartCard, adminCard});
+      return;
+    }
+
+    shopCard.style.display = (t==="shop") ? "" : "none";
+    cartCard.style.display = (t==="cart") ? "" : "none";
+    adminCard.style.display = (t==="admin") ? "" : "none";
+
+    shopBtn?.classList.toggle("active", t==="shop");
+    cartBtn?.classList.toggle("active", t==="cart");
+    adminBtn?.classList.toggle("active", t==="admin");
+  }
+
+  if(shopBtn) shopBtn.onclick = ()=>setTabSafe("shop");
+  if(cartBtn) cartBtn.onclick = ()=>setTabSafe("cart");
+  if(adminBtn) adminBtn.onclick = ()=>setTabSafe("admin");
+
+  console.log("✅ Buttons bound:", { shop: !!shopBtn, cart: !!cartBtn, admin: !!adminBtn });
+});
+  
+  
 function toast(msg){
   const el = document.createElement("div");
   el.className = "card";
