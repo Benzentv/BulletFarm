@@ -612,87 +612,262 @@ function renderAdminCategories(){
   });
 }
 
-/* ========= Admin: Produkte (CRUD light) ========= */
+/* ========= Admin: Produkte (CRUD) + Bearbeiten + Ressourcen + Bild-Vorschau ========= */
+let editProductId = null;
+
+function fmtRes(res){
+  return (res||[]).map(r=>`<span class="chip"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${Number(r.amount)||0}</b></span>`).join("");
+}
+function escapeHtml(s){
+  return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+}
+
 function renderAdminProducts(){
   const el = document.getElementById("panelProducts");
+
   const catOptions = [
     `<option value="none">Keine Kategorie</option>`,
-    ...categories.map(c=>`<option value="${c.id}">${c.name}</option>`)
+    ...categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`)
   ].join("");
 
   el.innerHTML = `
     <div class="card" style="margin-top:10px">
-      <div class="head"><b>Produkt hinzufügen</b></div>
+      <div class="head" style="justify-content:space-between">
+        <b>${editProductId ? "Produkt bearbeiten" : "Neues Produkt"}</b>
+        <div style="display:flex; gap:8px">
+          <button id="btnNewProd" class="primary">${editProductId ? "Neues Produkt" : "Reset"}</button>
+          <button id="btnReloadProds">Neu laden</button>
+        </div>
+      </div>
       <div class="body">
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px">
           <input id="pName" placeholder="Produktname" />
           <select id="pCat">${catOptions}</select>
           <input id="pImg" placeholder="Bild URL (optional)" style="grid-column: 1 / -1" />
         </div>
+
         <div style="height:10px"></div>
-        <button class="primary" id="btnAddProd">Hinzufügen</button>
+
+        <div class="previewBox" id="imgPreviewWrap" style="display:none">
+          <img id="imgPreview" alt="">
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
+          <b>Ressourcen</b>
+          <div class="muted" style="font-size:12px; margin-top:4px">name / amount / color</div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+            <input id="rName" placeholder="Name" style="flex:1; min-width:160px" />
+            <input id="rAmt" type="number" placeholder="Anzahl" style="width:120px" />
+            <input id="rColor" type="color" value="#7dd3fc" style="width:70px; padding:6px" />
+            <button id="btnAddRes">Hinzufügen</button>
+          </div>
+
+          <div style="height:10px"></div>
+          <div id="resList" class="chips"></div>
+        </div>
+
+        <div style="height:12px"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <button class="success" id="btnSaveProd">${editProductId ? "✅ Speichern" : "✅ Hinzufügen"}</button>
+          <button class="danger" id="btnDeleteProd" style="display:${editProductId ? "" : "none"}">🗑 Löschen</button>
+        </div>
       </div>
     </div>
 
     <div class="card" style="margin-top:12px">
-      <div class="head" style="justify-content:space-between">
-        <b>Produkte</b>
-        <button id="btnReloadProds">Neu laden</button>
-      </div>
+      <div class="head"><b>Produkte</b></div>
       <div class="body" style="overflow:auto">
         <table>
-          <thead><tr><th>Name</th><th>Kategorie</th><th>ID</th><th>Aktion</th></tr></thead>
+          <thead><tr><th>Bild</th><th>Name</th><th>Kategorie</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
           <tbody id="prodTable"></tbody>
         </table>
       </div>
     </div>
   `;
 
-  document.getElementById("btnReloadProds").onclick = async ()=>{ await loadPublic(); renderAdminProducts(); };
+  // State für Editor (im DOM halten)
+  const editorState = getEditorState();
+  setupEditor(editorState);
+  fillEditorFromProduct(editorState, editProductId);
 
-  document.getElementById("btnAddProd").onclick = async ()=>{
+  document.getElementById("btnNewProd").onclick = ()=>{
+    editProductId = null;
+    renderAdminProducts();
+  };
+  document.getElementById("btnReloadProds").onclick = async ()=>{
+    await loadPublic();
+    renderAdminProducts();
+  };
+
+  renderProductsTable();
+}
+
+function getEditorState(){
+  return {
+    resources: [],
+    setResources(newRes){
+      this.resources = newRes;
+      renderResChips(this);
+    }
+  };
+}
+
+function setupEditor(st){
+  // Bild Vorschau live
+  const imgInput = document.getElementById("pImg");
+  imgInput.addEventListener("input", ()=>updateImagePreview(imgInput.value));
+
+  // Ressourcen hinzufügen
+  document.getElementById("btnAddRes").onclick = ()=>{
+    const name = (document.getElementById("rName").value||"").trim();
+    const amount = Number(document.getElementById("rAmt").value);
+    const color = document.getElementById("rColor").value;
+
+    if(!name || !Number.isFinite(amount) || amount<=0){
+      alert("Bitte Ressource + positive Anzahl eingeben.");
+      return;
+    }
+    st.setResources([...(st.resources||[]), { name, amount, color }]);
+    document.getElementById("rName").value="";
+    document.getElementById("rAmt").value="";
+  };
+
+  // Speichern/Hinzufügen
+  document.getElementById("btnSaveProd").onclick = async ()=>{
     const name = (document.getElementById("pName").value||"").trim();
     const cat = document.getElementById("pCat").value;
     const image_url = (document.getElementById("pImg").value||"").trim() || null;
-    if(!name) return;
+
+    if(!name){ alert("Produktname fehlt."); return; }
 
     const payload = {
       name,
       category_id: (cat==="none") ? null : cat,
       image_url,
-      resources: []
+      resources: st.resources || []
     };
-    const r = await sb.from("products").insert(payload);
-    if(r.error){ console.error(r.error); alert("Produkt hinzufügen fehlgeschlagen (RLS?)"); return; }
-    document.getElementById("pName").value="";
-    document.getElementById("pImg").value="";
+
+    let r;
+    if(editProductId){
+      r = await sb.from("products").update(payload).eq("id", editProductId);
+    }else{
+      r = await sb.from("products").insert(payload);
+    }
+
+    if(r.error){ console.error(r.error); alert("Speichern fehlgeschlagen (RLS?)"); return; }
+
     await loadPublic();
+    editProductId = null;
+    renderAdminProducts();
+    alert("✅ Produkt gespeichert.");
+  };
+
+  // Löschen
+  document.getElementById("btnDeleteProd").onclick = async ()=>{
+    if(!editProductId) return;
+    const ok = confirm("Produkt wirklich löschen?");
+    if(!ok) return;
+    const r = await sb.from("products").delete().eq("id", editProductId);
+    if(r.error){ console.error(r.error); alert("Löschen fehlgeschlagen (RLS?)"); return; }
+    await loadPublic();
+    editProductId = null;
     renderAdminProducts();
   };
 
+  // initial chips
+  renderResChips(st);
+}
+
+function fillEditorFromProduct(st, productId){
+  const nameEl = document.getElementById("pName");
+  const catEl = document.getElementById("pCat");
+  const imgEl = document.getElementById("pImg");
+
+  if(!productId){
+    nameEl.value = "";
+    catEl.value = "none";
+    imgEl.value = "";
+    updateImagePreview("");
+    st.setResources([]);
+    return;
+  }
+
+  const p = products.find(x=>x.id===productId);
+  if(!p) return;
+
+  nameEl.value = p.name || "";
+  catEl.value = p.category_id ? p.category_id : "none";
+  imgEl.value = p.image_url || "";
+  updateImagePreview(p.image_url || "");
+  st.setResources(Array.isArray(p.resources) ? p.resources : []);
+}
+
+function updateImagePreview(url){
+  const wrap = document.getElementById("imgPreviewWrap");
+  const img = document.getElementById("imgPreview");
+  const u = (url||"").trim();
+  if(!u){
+    wrap.style.display = "none";
+    img.removeAttribute("src");
+    return;
+  }
+  wrap.style.display = "";
+  img.src = u;
+  img.onerror = ()=>{ wrap.style.display="none"; };
+}
+
+function renderResChips(st){
+  const box = document.getElementById("resList");
+  if(!box) return;
+  const res = st.resources || [];
+  if(res.length===0){
+    box.innerHTML = `<span class="muted">Noch keine Ressourcen</span>`;
+    return;
+  }
+  box.innerHTML = res.map((r,idx)=>
+    `<span class="chip">
+      <span class="dot" style="background:${r.color||'#fff'}"></span>
+      ${escapeHtml(r.name)}: <b>${Number(r.amount)||0}</b>
+      <button data-rdel="${idx}" class="danger" style="padding:2px 8px; border-radius:999px; margin-left:6px">x</button>
+    </span>`
+  ).join("");
+
+  box.querySelectorAll("[data-rdel]").forEach(b=>b.onclick=()=>{
+    const idx = Number(b.getAttribute("data-rdel"));
+    const next = (st.resources||[]).slice();
+    next.splice(idx,1);
+    st.setResources(next);
+  });
+}
+
+function renderProductsTable(){
   const tb = document.getElementById("prodTable");
-  tb.innerHTML = products.length ? "" : `<tr><td colspan="4" class="muted">Keine Produkte</td></tr>`;
+  tb.innerHTML = products.length ? "" : `<tr><td colspan="5" class="muted">Keine Produkte</td></tr>`;
 
   products.forEach(p=>{
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><b>${p.name}</b></td>
-      <td class="muted">${p.category_id ? p.category_id.slice(0,8) : "—"}</td>
-      <td class="muted">${String(p.id).slice(0,8)}</td>
+      <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:70px;height:44px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"
+            onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
+      <td><b>${escapeHtml(p.name)}</b><div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div></td>
+      <td class="muted">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
+      <td>${fmtRes(p.resources)}</td>
       <td>
-        <button class="danger" data-del="${p.id}">Löschen</button>
+        <button class="primary" data-edit="${p.id}">Bearbeiten</button>
       </td>
     `;
     tb.appendChild(tr);
   });
 
-  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
-    const id = b.getAttribute("data-del");
-    const r = await sb.from("products").delete().eq("id", id);
-    if(r.error){ console.error(r.error); alert("Löschen fehlgeschlagen (RLS?)"); return; }
-    await loadPublic(); renderAdminProducts();
+  tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{
+    editProductId = b.getAttribute("data-edit");
+    renderAdminProducts();
   });
 }
+
 
 /* ========= Admin: Theme (shop_settings id=1) ========= */
 function renderAdminTheme(){
