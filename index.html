@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>BulletFarm</title>
 
-  <!-- Supabase lokal im Repo-Root: supabase.min.js -->
+  <!-- favicon 404 vermeiden -->
+  <link rel="icon" href="data:," />
+
+  <!-- Supabase lokal im Repo-Root -->
   <script defer src="./supabase.min.js"></script>
 
   <style>
@@ -16,205 +19,115 @@
       --text:#e9eef6;
       --muted:#9aa6b2;
       --primary:#7dd3fc;
-      --secondary:#a78bfa;
       --success:#34d399;
-      --warn:#fbbf24;
       --danger:#fb7185;
-      --shadow: 0 14px 36px rgba(0,0,0,.35);
-      --radius: 18px;
+      --radius: 16px;
     }
     *{box-sizing:border-box}
     body{
-      margin:0;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
-      background:
-        radial-gradient(900px 600px at 20% 10%, rgba(125,211,252,.12), transparent 60%),
-        radial-gradient(900px 600px at 80% 0%, rgba(167,139,250,.12), transparent 55%),
-        var(--bg);
-      color:var(--text);
+      margin:0; font-family:system-ui,Segoe UI,Roboto,Arial;
+      background:var(--bg); color:var(--text);
       min-height:100vh;
     }
     header{
       position:sticky; top:0; z-index:10;
-      display:flex; align-items:center; justify-content:space-between; gap:12px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
       padding:14px 16px;
       border-bottom:1px solid var(--border);
-      background: rgba(11,15,20,.65);
+      background: rgba(11,15,20,.82);
       backdrop-filter: blur(10px);
     }
-    .brand{display:flex; align-items:center; gap:10px; min-width: 160px;}
-    .logo{
-      width:38px; height:38px; border-radius:14px;
-      background: linear-gradient(135deg, rgba(125,211,252,.95), rgba(167,139,250,.95));
-      box-shadow: var(--shadow);
-      flex:0 0 auto;
-    }
-    .title{font-weight:900; line-height:1.1}
-    .subtitle{color:var(--muted); font-size:12px; margin-top:2px}
-    .tabs{display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end}
+    .brand{font-weight:900}
+    .tabs{display:flex; gap:8px; flex-wrap:wrap}
     .pill{
       border:1px solid var(--border);
       background: rgba(255,255,255,.04);
-      color:var(--text);
-      padding:10px 12px;
+      color: var(--text);
+      padding:9px 12px;
       border-radius:999px;
       cursor:pointer;
       user-select:none;
-      display:inline-flex; align-items:center; gap:8px;
     }
-    .pill:hover{background: rgba(255,255,255,.07)}
-    .pill.active{border-color: rgba(125,211,252,.55); box-shadow: 0 0 0 3px rgba(125,211,252,.10) inset}
-    .count{
-      min-width:22px; height:22px;
-      border-radius:999px;
-      display:inline-flex; align-items:center; justify-content:center;
-      font-size:12px; font-weight:800;
-      background: rgba(167,139,250,.18);
-      border:1px solid rgba(167,139,250,.35);
-      padding:0 7px;
+    .pill.active{border-color: rgba(125,211,252,.6); box-shadow: 0 0 0 3px rgba(125,211,252,.10) inset}
+    main{max-width:1100px; margin:0 auto; padding:16px}
+    .banner{
+      display:none;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.03);
+      border-radius: 14px;
+      padding:10px 12px;
+      margin-bottom:12px;
+      color:var(--muted);
     }
-
-    .wrap{max-width:1120px; margin:0 auto; padding:16px}
-    .grid{display:grid; grid-template-columns: 1.35fr .65fr; gap:14px;}
+    .grid{display:grid; grid-template-columns:1.3fr .7fr; gap:12px}
     @media (max-width: 980px){ .grid{grid-template-columns:1fr} header{position:static} }
-
     .card{
       border:1px solid var(--border);
-      background: rgba(17,24,38,.85);
+      background: var(--card);
       border-radius: var(--radius);
-      box-shadow: var(--shadow);
       overflow:hidden;
     }
-    .cardHead{
-      padding:14px 14px;
+    .head{
+      padding:12px 14px;
       border-bottom:1px solid var(--border);
       display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
     }
-    .cardBody{padding:14px}
-    h2{margin:0; font-size:16px}
-    .muted{color:var(--muted)}
-    .row{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
-    .split{display:flex; gap:10px; flex-wrap:wrap}
-    .split > *{flex:1; min-width: 200px}
-    input, select, textarea, button{
+    .body{padding:14px}
+    input, select, button{
       border:1px solid var(--border);
       background: rgba(255,255,255,.04);
       color: var(--text);
-      padding:10px 12px;
-      border-radius:12px;
-      outline:none;
+      padding:9px 12px;
+      border-radius: 12px;
       font: inherit;
+      outline:none;
     }
-    textarea{min-height:88px; resize:vertical}
-    input::placeholder, textarea::placeholder{color: rgba(154,166,178,.78)}
     button{cursor:pointer; font-weight:800}
-    button:hover{background: rgba(255,255,255,.08)}
-    .btn.primary{border-color: rgba(125,211,252,.55); background: rgba(125,211,252,.10)}
-    .btn.secondary{border-color: rgba(167,139,250,.55); background: rgba(167,139,250,.10)}
-    .btn.success{border-color: rgba(52,211,153,.55); background: rgba(52,211,153,.10)}
-    .btn.warn{border-color: rgba(251,191,36,.55); background: rgba(251,191,36,.10)}
-    .btn.danger{border-color: rgba(251,113,133,.60); background: rgba(251,113,133,.10)}
-    .btn:disabled{opacity:.45; cursor:not-allowed}
-
-    .products{display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap:12px;}
-    @media (max-width: 720px){ .products{grid-template-columns: 1fr} }
-
+    button.primary{border-color: rgba(125,211,252,.55); background: rgba(125,211,252,.10)}
+    button.success{border-color: rgba(52,211,153,.55); background: rgba(52,211,153,.10)}
+    button.danger{border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10)}
+    .muted{color:var(--muted)}
+    .products{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px}
+    @media (max-width: 720px){ .products{grid-template-columns:1fr} }
     .prod{
       border:1px solid var(--border);
       background: rgba(255,255,255,.03);
-      border-radius:16px;
-      padding:12px;
-      display:flex; gap:12px;
-      overflow:hidden;
-    }
-    .thumb{
-      width:86px; height:86px; border-radius:14px;
-      background: rgba(255,255,255,.06);
-      border:1px solid rgba(255,255,255,.10);
-      overflow:hidden;
-      flex: 0 0 auto;
-      display:flex; align-items:center; justify-content:center;
-    }
-    .thumb img{width:100%; height:100%; object-fit:cover}
-    .prodTitle{font-weight:900; margin:0}
-    .prodMeta{font-size:12px; color:var(--muted); margin-top:2px}
-    .chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px}
-    .chip{
-      display:inline-flex; align-items:center; gap:6px;
-      font-size:12px;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.03);
-      padding:6px 10px;
-      border-radius:999px;
-    }
-    .dot{width:10px; height:10px; border-radius:999px; display:inline-block}
-
-    table{width:100%; border-collapse:collapse; font-size:13px}
-    th, td{border-bottom:1px solid var(--border); padding:10px 8px; vertical-align:top}
-    th{color:var(--muted); text-align:left}
-    .kpi{
-      margin-top:10px;
-      border:1px dashed rgba(255,255,255,.18);
-      background: rgba(255,255,255,.03);
       border-radius:14px;
-      padding:10px 12px;
-      color:var(--muted);
-      font-size:13px;
+      padding:12px;
     }
-
-    /* Modal */
+    table{width:100%; border-collapse:collapse; font-size:13px}
+    th,td{border-bottom:1px solid var(--border); padding:10px 8px; vertical-align:top}
+    th{color:var(--muted); text-align:left}
+    .count{display:inline-block; min-width:22px; text-align:center; padding:2px 7px; border-radius:999px; border:1px solid var(--border); color:var(--muted)}
+    /* modal */
     .modalBg{
       position:fixed; inset:0;
       background: rgba(0,0,0,.55);
       display:none;
       align-items:center; justify-content:center;
       padding:16px;
-      z-index:50;
+      z-index:100;
     }
     .modal{
-      width:min(980px, 100%);
+      width:min(900px,100%);
       max-height:90vh;
       overflow:auto;
+      background: #0b0f14;
       border:1px solid var(--border);
-      border-radius:20px;
-      background: rgba(11,15,20,.92);
-      box-shadow: 0 30px 90px rgba(0,0,0,.55);
+      border-radius: 18px;
     }
     .modalHead{
-      padding:14px;
+      padding:12px 14px;
       border-bottom:1px solid var(--border);
-      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      display:flex; justify-content:space-between; align-items:center;
     }
     .modalBody{padding:14px}
-    .tabs2{display:flex; gap:8px; flex-wrap:wrap; margin-top:12px}
-    .hr{height:1px; background: var(--border); margin:14px 0}
-    .note{font-size:12px; color:var(--muted)}
-    .ok{color:var(--success); font-weight:900}
-    .bad{color:var(--danger); font-weight:900}
-    .warnTxt{color:var(--warn); font-weight:900}
-
-    .banner{
-      display:none;
-      margin: 12px 0 0;
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.03);
-      border-radius:14px;
-      padding:10px 12px;
-      align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
-    }
   </style>
 </head>
 <body>
 
 <header>
-  <div class="brand">
-    <div class="logo" aria-hidden="true"></div>
-    <div>
-      <div class="title" id="shopTitle">BulletFarm</div>
-      <div class="subtitle" id="shopSubtitle">GitHub Pages • Supabase</div>
-    </div>
-  </div>
-
+  <div class="brand" id="brandTitle">BulletFarm</div>
   <div class="tabs">
     <div class="pill active" id="tabShop">Shop</div>
     <div class="pill" id="tabCart">Warenkorb <span class="count" id="cartCount">0</span></div>
@@ -222,354 +135,156 @@
   </div>
 </header>
 
-<div class="wrap">
-  <div class="banner" id="topStatus">
-    <div class="note" id="topStatusText">…</div>
-    <div class="row">
-      <button class="btn" id="btnReload">Neu laden</button>
-    </div>
-  </div>
+<main>
+  <div class="banner" id="banner"></div>
 
   <div class="grid">
     <!-- SHOP -->
     <section class="card" id="shopCard">
-      <div class="cardHead">
-        <h2>Produkte</h2>
-        <div class="row">
-          <label class="muted" for="catFilter">Filter:</label>
+      <div class="head">
+        <b>Produkte</b>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
           <select id="catFilter"></select>
           <input id="searchBox" placeholder="Suchen…" />
+          <button id="btnReload" class="primary">Neu laden</button>
         </div>
       </div>
-      <div class="cardBody">
+      <div class="body">
         <div class="products" id="productList"></div>
       </div>
     </section>
 
     <!-- CART -->
     <aside class="card" id="cartCard" style="display:none">
-      <div class="cardHead">
-        <h2>🛒 Warenkorb</h2>
-        <div class="row">
-          <button class="btn danger" id="btnClearCart">Leeren</button>
+      <div class="head">
+        <b>Warenkorb</b>
+        <div style="display:flex; gap:8px">
+          <button id="btnClearCart" class="danger">Leeren</button>
         </div>
       </div>
-      <div class="cardBody">
+      <div class="body">
         <div class="muted" style="margin-bottom:8px">Produkte & Anzahl</div>
-
         <div style="overflow:auto">
           <table>
-            <thead>
-              <tr>
-                <th>Produkt</th>
-                <th>Menge</th>
-                <th>Aktion</th>
-              </tr>
-            </thead>
+            <thead><tr><th>Produkt</th><th>Menge</th><th>Aktion</th></tr></thead>
             <tbody id="cartRows"></tbody>
           </table>
         </div>
-
-        <div class="kpi" id="cartTotals">Gesamt Ressourcen: <b>keine</b></div>
-
-        <div class="hr"></div>
-        <div class="split">
-          <input id="custName" placeholder="Name (optional)" />
-          <input id="custPhone" placeholder="Telefon (optional)" />
-        </div>
-        <div class="row" style="margin-top:10px; justify-content:space-between">
-          <button class="btn secondary" id="btnSaveCart">Warenkorb speichern</button>
-          <button class="btn success" id="btnCheckout">✅ Bestellung absenden</button>
-        </div>
-        <div class="note" style="margin-top:10px">
-          Bestellungen werden in Supabase gespeichert. (Nur Admin sieht sie.)
+        <div style="height:10px"></div>
+        <input id="custName" placeholder="Name (optional)" />
+        <div style="height:8px"></div>
+        <input id="custPhone" placeholder="Telefon (optional)" />
+        <div style="height:10px"></div>
+        <button id="btnCheckout" class="success" style="width:100%">✅ Bestellung absenden</button>
+        <div class="muted" style="margin-top:10px; font-size:12px">
+          Bestellungen werden in Supabase gespeichert.
         </div>
       </div>
     </aside>
 
     <!-- ADMIN -->
     <section class="card" id="adminCard" style="display:none">
-      <div class="cardHead">
-        <h2>⚙️ Admin</h2>
-        <button class="btn" id="btnOpenAdmin">Öffnen</button>
+      <div class="head">
+        <b>Admin</b>
+        <button id="btnOpenAdmin" class="primary">Öffnen</button>
       </div>
-      <div class="cardBody">
-        <div class="muted">Login mit Supabase Email/Passwort</div>
-        <div class="note" style="margin-top:8px" id="adminHint"></div>
+      <div class="body">
+        <div class="muted">Hier kannst du dich als Admin einloggen und später Produkte verwalten.</div>
       </div>
     </section>
   </div>
-</div>
+</main>
 
 <!-- ADMIN MODAL -->
-<div class="modalBg" id="modalBg" role="dialog" aria-modal="true">
+<div class="modalBg" id="modalBg">
   <div class="modal">
     <div class="modalHead">
-      <div>
-        <div style="font-weight:900">⚙️ Admin Panel</div>
-        <div class="note">Produkte • Kategorien • Theme • Bestellungen • Benachrichtigung</div>
-      </div>
-      <button class="btn" id="btnCloseAdmin">✖</button>
+      <div><b>⚙️ Admin Panel</b></div>
+      <button id="btnCloseAdmin">✖</button>
     </div>
-
     <div class="modalBody">
-      <!-- LOGIN -->
-      <div id="loginBox">
-        <div class="row">
-          <input id="adminEmail" type="email" placeholder="Admin Email" style="flex:1; min-width:220px" />
-          <input id="adminPass" type="password" placeholder="Passwort" style="flex:1; min-width:180px" />
-          <button class="btn primary" id="btnLogin">Einloggen</button>
-          <button class="btn" id="btnLogout" style="display:none">Logout</button>
-        </div>
-        <div class="note" id="loginMsg" style="margin-top:10px"></div>
-        <div class="hr"></div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <input id="adminEmail" type="email" placeholder="Admin Email" style="flex:1; min-width:220px" />
+        <input id="adminPass" type="password" placeholder="Passwort" style="flex:1; min-width:180px" />
+        <button id="btnLogin" class="primary">Einloggen</button>
+        <button id="btnLogout" style="display:none">Logout</button>
       </div>
+      <div class="muted" id="loginMsg" style="margin-top:10px"></div>
 
-      <!-- ADMIN UI -->
-      <div id="adminUI" style="display:none">
-        <div class="tabs2" id="adminTabs"></div>
-
-        <div id="panelProducts" style="margin-top:12px"></div>
-        <div id="panelCategories" style="display:none; margin-top:12px"></div>
-        <div id="panelTheme" style="display:none; margin-top:12px"></div>
-        <div id="panelOrders" style="display:none; margin-top:12px"></div>
-        <div id="panelNotify" style="display:none; margin-top:12px"></div>
+      <div style="height:14px"></div>
+      <div class="muted">
+        Hinweis: Admin-Funktionen kommen als nächstes (CRUD). Wichtig ist jetzt: Tabs + Modal funktionieren stabil.
       </div>
     </div>
   </div>
 </div>
 
 <script>
-  alert("JS läuft ✅");
-/* ==============================
-   SUPABASE CONFIG (DEINE NEUEN DATEN)
-================================ */
+/* ========= sichtbarer Debug: Seite hat JS geladen ========= */
+const banner = document.getElementById("banner");
+function showBanner(msg){
+  banner.style.display = "block";
+  banner.textContent = msg;
+}
+
+/* ========= Supabase Daten ========= */
 const SUPABASE_URL = "https://hmfyjgmgkqjcspjyqihm.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtZnlqZ21na3FqY3NwanlxaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4ODc5MTYsImV4cCI6MjA4MzQ2MzkxNn0.j873-VozJFlYk1zBRvbirbH9eFW_wP_gtbFn0zTVqTo";
 
-/* NICHT 'supabase' als Variable nutzen -> keine Kollisionen */
 let sb = null;
 
-/* ==============================
-   HELPERS
-================================ */
-const $ = (q)=>document.querySelector(q);
-
-// ===== EMERGENCY CLICK BINDINGS (läuft auch wenn später JS crasht) =====
-window.addEventListener("DOMContentLoaded", () => {
-  console.log("✅ Emergency bindings loaded");
-
-  const shopBtn = document.getElementById("tabShop");
-  const cartBtn = document.getElementById("tabCart");
-  const adminBtn = document.getElementById("tabAdmin");
-
-  function setTabSafe(t){
-    const shopCard = document.getElementById("shopCard");
-    const cartCard = document.getElementById("cartCard");
-    const adminCard = document.getElementById("adminCard");
-
-    if(!shopCard || !cartCard || !adminCard){
-      console.error("❌ Cards not found", {shopCard, cartCard, adminCard});
-      return;
-    }
-
-    shopCard.style.display = (t==="shop") ? "" : "none";
-    cartCard.style.display = (t==="cart") ? "" : "none";
-    adminCard.style.display = (t==="admin") ? "" : "none";
-
-    shopBtn?.classList.toggle("active", t==="shop");
-    cartBtn?.classList.toggle("active", t==="cart");
-    adminBtn?.classList.toggle("active", t==="admin");
-  }
-
-  if(shopBtn) shopBtn.onclick = ()=>setTabSafe("shop");
-  if(cartBtn) cartBtn.onclick = ()=>setTabSafe("cart");
-  if(adminBtn) adminBtn.onclick = ()=>setTabSafe("admin");
-
-  console.log("✅ Buttons bound:", { shop: !!shopBtn, cart: !!cartBtn, admin: !!adminBtn });
-});
-  
-  
-function toast(msg){
-  const el = document.createElement("div");
-  el.className = "card";
-  el.style.position="fixed";
-  el.style.right="14px";
-  el.style.bottom="14px";
-  el.style.padding="12px 14px";
-  el.style.borderRadius="16px";
-  el.style.maxWidth="420px";
-  el.style.zIndex=100;
-  el.style.background="rgba(17,24,38,.92)";
-  el.style.borderColor="rgba(255,255,255,.14)";
-  el.innerHTML = `<div style="font-weight:900; margin-bottom:4px">Info</div><div class="note">${escapeHtml(msg)}</div>`;
-  document.body.appendChild(el);
-  setTimeout(()=>{ el.style.opacity="0"; el.style.transition="opacity .25s"; }, 2200);
-  setTimeout(()=>el.remove(), 2600);
-}
-function escapeHtml(s){
-  return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-}
-function setTopStatus(text, show=true){
-  const b = $("#topStatus");
-  b.style.display = show ? "flex" : "none";
-  $("#topStatusText").textContent = text || "";
-}
-function idShort(id){ return String(id||"").slice(0,8); }
-function safeJSON(x, fallback){
-  try{ return JSON.parse(x); }catch{ return fallback; }
-}
-
-/* ==============================
-   LOCAL STORAGE (Cart)
-================================ */
-const LS = { cart:"bf_cart_v2" };
-let cart = safeJSON(localStorage.getItem(LS.cart) || "[]", []);
-function saveCart(){
-  cart = cart.filter(x=>x.qty>0);
-  localStorage.setItem(LS.cart, JSON.stringify(cart));
-  $("#cartCount").textContent = String(cart.reduce((s,x)=>s+x.qty,0));
-}
-
-/* ==============================
-   DATA (Supabase)
-================================ */
+/* ========= State ========= */
 let categories = [];
 let products = [];
-let settings = {
-  title: "BulletFarm",
-  subtitle: "GitHub Pages • Supabase",
-  colors: {
-    bg:"#0b0f14",
-    card:"#111826",
-    border:"rgba(255,255,255,.12)",
-    text:"#e9eef6",
-    muted:"#9aa6b2",
-    primary:"#7dd3fc",
-    secondary:"#a78bfa",
-    success:"#34d399",
-    warn:"#fbbf24",
-    danger:"#fb7185"
-  },
-  notify: {
-    enabled: false,
-    edgeFunctionUrl: ""  // z.B. https://hmfy...supabase.co/functions/v1/notify-order
-  }
-};
+let cart = JSON.parse(localStorage.getItem("bf_cart") || "[]");
 
-/* ==============================
-   APPLY THEME
-================================ */
-function applyTheme(){
-  const c = settings.colors || {};
-  const root = document.documentElement.style;
-  if(c.bg) root.setProperty("--bg", c.bg);
-  if(c.card) root.setProperty("--card", c.card);
-  if(c.border) root.setProperty("--border", c.border);
-  if(c.text) root.setProperty("--text", c.text);
-  if(c.muted) root.setProperty("--muted", c.muted);
-  if(c.primary) root.setProperty("--primary", c.primary);
-  if(c.secondary) root.setProperty("--secondary", c.secondary);
-  if(c.success) root.setProperty("--success", c.success);
-  if(c.warn) root.setProperty("--warn", c.warn);
-  if(c.danger) root.setProperty("--danger", c.danger);
-
-  $("#shopTitle").textContent = settings.title || "BulletFarm";
-  $("#shopSubtitle").textContent = settings.subtitle || "";
+function saveCart(){
+  localStorage.setItem("bf_cart", JSON.stringify(cart));
+  document.getElementById("cartCount").textContent = String(cart.reduce((s,x)=>s + x.qty, 0));
 }
 
-/* ==============================
-   LOAD FROM SUPABASE
-================================ */
-async function loadAllPublic(){
-  setTopStatus("Lade Shop-Daten…", true);
-
-  // settings
-  const s = await sb.from("shop_settings").select("data").eq("id", 1).maybeSingle();
-  if(s.error){
-    console.warn("shop_settings load", s.error);
-  } else if(s.data?.data){
-    settings = deepMerge(settings, s.data.data);
-  }
-  applyTheme();
-
-  // categories
-  const c = await sb.from("categories").select("*").order("created_at", {ascending:true});
-  if(c.error){ console.error(c.error); toast("Fehler: Kategorien laden"); }
-  categories = c.data || [];
-
-  // products
-  const p = await sb.from("products").select("*").order("created_at", {ascending:false});
-  if(p.error){ console.error(p.error); toast("Fehler: Produkte laden"); }
-  products = (p.data || []).map(x=>({
-    id: x.id,
-    name: x.name,
-    category_id: x.category_id,
-    image_url: x.image_url,
-    resources: x.resources || []
-  }));
-
-  renderAll();
-  setTopStatus("Shop geladen ✅", true);
-  setTimeout(()=>setTopStatus("", false), 1200);
-}
-
-function deepMerge(base, patch){
-  if(typeof base !== "object" || base===null) return patch;
-  if(typeof patch !== "object" || patch===null) return base;
-  const out = Array.isArray(base) ? base.slice() : { ...base };
-  for(const k of Object.keys(patch)){
-    out[k] = (k in out) ? deepMerge(out[k], patch[k]) : patch[k];
-  }
-  return out;
-}
-
-/* ==============================
-   NAV
-================================ */
+/* ========= Tabs (stabil, ohne Abhängigkeiten) ========= */
 function setTab(t){
-  $("#tabShop").classList.toggle("active", t==="shop");
-  $("#tabCart").classList.toggle("active", t==="cart");
-  $("#tabAdmin").classList.toggle("active", t==="admin");
+  document.getElementById("tabShop").classList.toggle("active", t==="shop");
+  document.getElementById("tabCart").classList.toggle("active", t==="cart");
+  document.getElementById("tabAdmin").classList.toggle("active", t==="admin");
 
-  $("#shopCard").style.display = (t==="shop") ? "" : "none";
-  $("#cartCard").style.display = (t==="cart") ? "" : "none";
-  $("#adminCard").style.display = (t==="admin") ? "" : "none";
-}
-$("#tabShop").onclick = ()=>setTab("shop");
-$("#tabCart").onclick = ()=>setTab("cart");
-$("#tabAdmin").onclick = ()=>setTab("admin");
-
-/* ==============================
-   SHOP RENDER
-================================ */
-function catName(id){
-  if(!id) return "— Keine Kategorie —";
-  const c = categories.find(x=>x.id===id);
-  return c ? c.name : "— Unbekannt —";
-}
-function fmtRes(res){
-  return (res||[]).map(r=>`<span class="chip"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${Number(r.amount)||0}</b></span>`).join("");
+  document.getElementById("shopCard").style.display = (t==="shop") ? "" : "none";
+  document.getElementById("cartCard").style.display = (t==="cart") ? "" : "none";
+  document.getElementById("adminCard").style.display = (t==="admin") ? "" : "none";
 }
 
+document.getElementById("tabShop").onclick = ()=>setTab("shop");
+document.getElementById("tabCart").onclick = ()=>setTab("cart");
+document.getElementById("tabAdmin").onclick = ()=>setTab("admin");
+
+/* ========= Admin Modal ========= */
+function openAdmin(){ document.getElementById("modalBg").style.display = "flex"; }
+function closeAdmin(){ document.getElementById("modalBg").style.display = "none"; }
+
+document.getElementById("btnOpenAdmin").onclick = openAdmin;
+document.getElementById("btnCloseAdmin").onclick = closeAdmin;
+document.getElementById("modalBg").onclick = (e)=>{ if(e.target.id==="modalBg") closeAdmin(); };
+
+/* ========= Render ========= */
 function renderFilter(){
-  const sel = $("#catFilter");
+  const sel = document.getElementById("catFilter");
   const prev = sel.value || "all";
   sel.innerHTML = "";
-  sel.appendChild(new Option("— Alle Kategorien —", "all"));
-  sel.appendChild(new Option("— Keine Kategorie —", "none"));
+  sel.appendChild(new Option("Alle Kategorien", "all"));
+  sel.appendChild(new Option("Keine Kategorie", "none"));
   for(const c of categories) sel.appendChild(new Option(c.name, c.id));
   sel.value = prev;
   sel.onchange = renderProducts;
-  $("#searchBox").oninput = renderProducts;
+  document.getElementById("searchBox").oninput = renderProducts;
 }
 
 function renderProducts(){
-  const list = $("#productList");
+  const list = document.getElementById("productList");
   list.innerHTML = "";
 
-  const filter = $("#catFilter").value;
-  const q = ($("#searchBox").value || "").trim().toLowerCase();
+  const filter = document.getElementById("catFilter").value;
+  const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
 
   let shown = products.slice();
   if(filter==="none") shown = shown.filter(p=>!p.category_id);
@@ -582,81 +297,52 @@ function renderProducts(){
   }
 
   for(const p of shown){
-    const el = document.createElement("div");
-    el.className = "prod";
-    el.innerHTML = `
-      <div class="thumb">${p.image_url ? `<img alt="" src="${p.image_url}">` : `<span class="muted">Bild</span>`}</div>
-      <div style="flex:1;min-width:0">
-        <div class="prodTitle">${escapeHtml(p.name)}</div>
-        <div class="prodMeta">${escapeHtml(catName(p.category_id))} • ID: ${escapeHtml(idShort(p.id))}</div>
-        <div class="chips">${fmtRes(p.resources)}</div>
-        <div class="row" style="margin-top:10px; justify-content:space-between">
-          <button class="btn secondary" data-add="${p.id}">In den Warenkorb</button>
-        </div>
-      </div>
+    const div = document.createElement("div");
+    div.className = "prod";
+    div.innerHTML = `
+      <b>${p.name}</b>
+      <div class="muted" style="font-size:12px; margin-top:4px">${p.category_id || "—"}</div>
+      <div style="height:8px"></div>
+      <button class="primary" data-add="${p.id}">In den Warenkorb</button>
     `;
-    list.appendChild(el);
+    list.appendChild(div);
   }
-
   list.querySelectorAll("[data-add]").forEach(b=>{
     b.onclick = ()=>addToCart(b.getAttribute("data-add"));
   });
 }
 
-/* ==============================
-   CART
-================================ */
 function addToCart(productId){
   const it = cart.find(x=>x.productId===productId);
   if(it) it.qty += 1;
-  else cart.push({ productId, qty:1 });
+  else cart.push({ productId, qty: 1 });
   saveCart();
   renderCart();
-  toast("Zum Warenkorb hinzugefügt.");
 }
+
 function renderCart(){
   saveCart();
-  const tb = $("#cartRows");
+  const tb = document.getElementById("cartRows");
   tb.innerHTML = "";
-
   if(cart.length===0){
     tb.innerHTML = `<tr><td colspan="3" class="muted">Warenkorb ist leer.</td></tr>`;
-    $("#cartTotals").innerHTML = `Gesamt Ressourcen: <b>keine</b>`;
     return;
   }
-
-  const totals = new Map();
-
   for(const item of cart){
     const p = products.find(x=>x.id===item.productId);
-    if(!p) continue;
-
-    for(const r of (p.resources||[])){
-      const key = r.name || "";
-      const prev = totals.get(key) || {amount:0, color:r.color||"#fff"};
-      prev.amount += (Number(r.amount)||0) * item.qty;
-      if(r.color) prev.color = r.color;
-      totals.set(key, prev);
-    }
-
+    const name = p ? p.name : "(Produkt fehlt)";
     const tr = document.createElement("tr");
     tr.innerHTML = `
+      <td><b>${name}</b></td>
+      <td>${item.qty}</td>
       <td>
-        <div style="font-weight:900">${escapeHtml(p.name)}</div>
-        <div class="muted" style="font-size:12px">${escapeHtml(catName(p.category_id))}</div>
+        <button data-inc="${item.productId}">+</button>
+        <button data-dec="${item.productId}">-</button>
+        <button class="danger" data-rem="${item.productId}">X</button>
       </td>
-      <td>
-        <div class="row">
-          <button class="btn" data-dec="${p.id}">−</button>
-          <b style="min-width:26px; display:inline-block; text-align:center">${item.qty}</b>
-          <button class="btn" data-inc="${p.id}">+</button>
-        </div>
-      </td>
-      <td><button class="btn danger" data-rem="${p.id}">Entfernen</button></td>
     `;
     tb.appendChild(tr);
   }
-
   tb.querySelectorAll("[data-inc]").forEach(b=>b.onclick=()=>{
     const id = b.getAttribute("data-inc");
     const it = cart.find(x=>x.productId===id);
@@ -665,329 +351,107 @@ function renderCart(){
   tb.querySelectorAll("[data-dec]").forEach(b=>b.onclick=()=>{
     const id = b.getAttribute("data-dec");
     const it = cart.find(x=>x.productId===id);
-    if(it){ it.qty=Math.max(0,it.qty-1); saveCart(); renderCart(); }
+    if(it){ it.qty=Math.max(0,it.qty-1); if(it.qty===0) cart=cart.filter(x=>x.productId!==id); saveCart(); renderCart(); }
   });
   tb.querySelectorAll("[data-rem]").forEach(b=>b.onclick=()=>{
     const id = b.getAttribute("data-rem");
     cart = cart.filter(x=>x.productId!==id);
     saveCart(); renderCart();
   });
-
-  if(totals.size===0){
-    $("#cartTotals").innerHTML = `Gesamt Ressourcen: <b>keine</b>`;
-  } else {
-    const chips = Array.from(totals.entries()).map(([name,v])=>
-      `<span class="chip"><span class="dot" style="background:${v.color}"></span>${escapeHtml(name)}: <b>${v.amount}</b></span>`
-    ).join(" ");
-    $("#cartTotals").innerHTML = `Gesamt Ressourcen: ${chips}`;
-  }
 }
 
-$("#btnClearCart").onclick = ()=>{ cart=[]; saveCart(); renderCart(); };
-$("#btnSaveCart").onclick = ()=>{ saveCart(); toast("Warenkorb gespeichert."); };
-
-$("#btnCheckout").onclick = async ()=>{
-  if(cart.length===0){ toast("Warenkorb ist leer."); return; }
-
-  const name = ($("#custName").value || "").trim();
-  const phone = ($("#custPhone").value || "").trim();
-
-  const items = cart.map(ci=>{
-    const p = products.find(x=>x.id===ci.productId);
-    return {
-      productId: ci.productId,
-      name: p?.name || "Unbekannt",
-      qty: ci.qty,
-      resources: p?.resources || []
-    };
-  });
-
-  const payload = {
-    status: "offen",
-    customer: { name, phone },
-    items
-  };
-
-  const ins = await sb.from("orders").insert(payload).select("id").maybeSingle();
-  if(ins.error){
-    console.error(ins.error);
-    toast("Bestellung fehlgeschlagen (RLS insert?).");
-    return;
-  }
-
-  // (5) Benachrichtigung sicher über Edge Function (falls aktiviert)
-  if(settings.notify?.enabled && settings.notify?.edgeFunctionUrl){
-    try{
-      await fetch(settings.notify.edgeFunctionUrl, {
-        method:"POST",
-        headers: { "Content-Type":"application/json" },
-        body: JSON.stringify({ order_id: ins.data?.id, order: payload })
-      });
-    }catch(e){
-      console.warn("Notify failed", e);
-    }
-  }
-
+document.getElementById("btnClearCart").onclick = ()=>{
   cart = [];
   saveCart();
   renderCart();
-  toast("✅ Bestellung gespeichert!");
+};
+
+/* ========= Supabase load ========= */
+async function loadPublic(){
+  if(!sb){
+    showBanner("JS läuft ✅ — Supabase wird initialisiert…");
+    return;
+  }
+  showBanner("Supabase verbunden ✅ — lade Daten…");
+
+  // Settings (optional)
+  try{
+    const s = await sb.from("shop_settings").select("data").eq("id",1).maybeSingle();
+    const title = s.data?.data?.title;
+    if(title) document.getElementById("brandTitle").textContent = title;
+  }catch{}
+
+  const c = await sb.from("categories").select("*").order("created_at", {ascending:true});
+  categories = c.data || [];
+
+  const p = await sb.from("products").select("*").order("created_at", {ascending:false});
+  products = p.data || [];
+
+  renderFilter();
+  renderProducts();
+  renderCart();
+  showBanner("Shop geladen ✅ (wenn leer: Tabellen/RLS prüfen)");
+}
+
+document.getElementById("btnReload").onclick = loadPublic;
+
+/* ========= Checkout ========= */
+document.getElementById("btnCheckout").onclick = async ()=>{
+  if(cart.length===0){ alert("Warenkorb ist leer"); return; }
+  if(!sb){ alert("Supabase nicht bereit"); return; }
+
+  const name = (document.getElementById("custName").value || "").trim();
+  const phone = (document.getElementById("custPhone").value || "").trim();
+
+  const items = cart.map(ci=>{
+    const p = products.find(x=>x.id===ci.productId);
+    return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty };
+  });
+
+  const ins = await sb.from("orders").insert({ status:"offen", customer:{name,phone}, items });
+  if(ins.error){
+    console.error(ins.error);
+    alert("Bestellung fehlgeschlagen (RLS insert?)");
+    return;
+  }
+  cart = [];
+  saveCart();
+  renderCart();
+  alert("✅ Bestellung gespeichert!");
   setTab("shop");
 };
 
-/* ==============================
-   ADMIN MODAL
-================================ */
-$("#btnOpenAdmin").onclick = ()=>openAdmin();
-$("#btnCloseAdmin").onclick = ()=>closeAdmin();
-$("#modalBg").onclick = (e)=>{ if(e.target.id==="modalBg") closeAdmin(); };
-
-function openAdmin(){
-  $("#modalBg").style.display="flex";
-  refreshAuthUI();
-}
-function closeAdmin(){
-  $("#modalBg").style.display="none";
-}
-
-const ADMIN_SECTIONS = [
-  {id:"products", label:"Produkte"},
-  {id:"categories", label:"Kategorien"},
-  {id:"theme", label:"Theme"},
-  {id:"orders", label:"Bestellungen"},
-  {id:"notify", label:"Benachrichtigung"},
-];
-let adminActive = "products";
-
-function renderAdminTabs(){
-  const box = $("#adminTabs");
-  box.innerHTML = "";
-  for(const s of ADMIN_SECTIONS){
-    const b = document.createElement("button");
-    b.className = "btn " + (adminActive===s.id ? "primary" : "");
-    b.textContent = s.label;
-    b.onclick = ()=>{ adminActive=s.id; showAdminPanel(); renderAdminTabs(); };
-    box.appendChild(b);
-  }
-}
-
-function showAdminPanel(){
-  $("#panelProducts").style.display = adminActive==="products" ? "" : "none";
-  $("#panelCategories").style.display = adminActive==="categories" ? "" : "none";
-  $("#panelTheme").style.display = adminActive==="theme" ? "" : "none";
-  $("#panelOrders").style.display = adminActive==="orders" ? "" : "none";
-  $("#panelNotify").style.display = adminActive==="notify" ? "" : "none";
-
-  if(adminActive==="products") renderAdminProducts();
-  if(adminActive==="categories") renderAdminCategories();
-  if(adminActive==="theme") renderAdminTheme();
-  if(adminActive==="orders") renderAdminOrders();
-  if(adminActive==="notify") renderAdminNotify();
-}
-
-async function refreshAuthUI(){
-  const s = await sb.auth.getSession();
-  const loggedIn = !!s.data?.session;
-
-  $("#btnLogout").style.display = loggedIn ? "" : "none";
-  $("#adminUI").style.display = loggedIn ? "" : "none";
-  $("#loginMsg").innerHTML = loggedIn
-    ? `<span class="ok">Eingeloggt:</span> ${escapeHtml(s.data.session.user.email)}`
-    : `Bitte einloggen.`;
-
-  if(loggedIn){
-    renderAdminTabs();
-    showAdminPanel();
-  }
-}
-
-$("#btnLogin").onclick = async ()=>{
-  const email = ($("#adminEmail").value||"").trim();
-  const password = $("#adminPass").value || "";
-  $("#loginMsg").textContent = "Login…";
-  const res = await sb.auth.signInWithPassword({ email, password });
-  if(res.error){
-    console.error(res.error);
-    $("#loginMsg").innerHTML = `<span class="bad">Login fehlgeschlagen</span>`;
-    return;
-  }
-  toast("Admin Login erfolgreich.");
-  refreshAuthUI();
+/* ========= Admin login basic ========= */
+document.getElementById("btnLogin").onclick = async ()=>{
+  if(!sb){ alert("Supabase nicht bereit"); return; }
+  const email = (document.getElementById("adminEmail").value || "").trim();
+  const password = (document.getElementById("adminPass").value || "");
+  const r = await sb.auth.signInWithPassword({ email, password });
+  document.getElementById("loginMsg").textContent = r.error ? ("Login fehlgeschlagen") : ("Eingeloggt ✅");
+  document.getElementById("btnLogout").style.display = r.error ? "none" : "";
 };
-$("#btnLogout").onclick = async ()=>{
+document.getElementById("btnLogout").onclick = async ()=>{
+  if(!sb) return;
   await sb.auth.signOut();
-  toast("Ausgeloggt.");
-  refreshAuthUI();
+  document.getElementById("loginMsg").textContent = "Ausgeloggt.";
+  document.getElementById("btnLogout").style.display = "none";
 };
 
-/* ==============================
-   ADMIN: CATEGORIES (CRUD)
-================================ */
-function renderAdminCategories(){
-  const el = $("#panelCategories");
-  el.innerHTML = `
-    <div class="row" style="justify-content:space-between">
-      <div style="font-weight:900">Kategorien</div>
-      <div class="row">
-        <input id="newCatName" placeholder="Neue Kategorie" />
-        <button class="btn secondary" id="btnAddCat">Hinzufügen</button>
-        <button class="btn" id="btnReloadCats">Neu laden</button>
-      </div>
-    </div>
-    <div class="hr"></div>
-    <div style="overflow:auto">
-      <table>
-        <thead><tr><th>Name</th><th>ID</th><th>Aktion</th></tr></thead>
-        <tbody id="catTable"></tbody>
-      </table>
-    </div>
-  `;
+/* ========= Start ========= */
+window.addEventListener("DOMContentLoaded", async ()=>{
+  saveCart();
+  renderCart();
+  setTab("shop");
+  showBanner("JS läuft ✅ — initialisiere…");
 
-  $("#btnReloadCats").onclick = async ()=>{ await loadAllPublic(); toast("Neu geladen."); openAdmin(); };
-  $("#btnAddCat").onclick = async ()=>{
-    const name = ($("#newCatName").value||"").trim();
-    if(!name) return;
-    const r = await sb.from("categories").insert({ name });
-    if(r.error){ console.error(r.error); toast("Kategorie hinzufügen fehlgeschlagen (RLS?)."); return; }
-    $("#newCatName").value="";
-    await loadAllPublic();
-    renderAdminCategories();
-  };
-
-  const tb = $("#catTable");
-  tb.innerHTML = "";
-  if(categories.length===0){
-    tb.innerHTML = `<tr><td colspan="3" class="muted">Keine Kategorien</td></tr>`;
+  if(!window.supabase){
+    showBanner("❌ supabase.min.js wurde nicht geladen (Datei/Pfad prüfen)");
     return;
   }
-
-  for(const c of categories){
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input data-name="${c.id}" value="${escapeHtml(c.name)}" /></td>
-      <td class="muted">${escapeHtml(idShort(c.id))}</td>
-      <td class="row">
-        <button class="btn success" data-save="${c.id}">Speichern</button>
-        <button class="btn danger" data-del="${c.id}">Löschen</button>
-      </td>
-    `;
-    tb.appendChild(tr);
-  }
-
-  tb.querySelectorAll("[data-save]").forEach(b=>b.onclick=async ()=>{
-    const id = b.getAttribute("data-save");
-    const name = (tb.querySelector(`[data-name="${id}"]`).value || "").trim() || "Unbenannt";
-    const r = await sb.from("categories").update({ name }).eq("id", id);
-    if(r.error){ console.error(r.error); toast("Update fehlgeschlagen (RLS?)."); return; }
-    await loadAllPublic();
-    renderAdminCategories();
-  });
-
-  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
-    const id = b.getAttribute("data-del");
-    const r = await sb.from("categories").delete().eq("id", id);
-    if(r.error){ console.error(r.error); toast("Löschen fehlgeschlagen (RLS?)."); return; }
-    await loadAllPublic();
-    renderAdminCategories();
-  });
-}
-
-/* ==============================
-   ADMIN: PRODUCTS (CRUD)
-================================ */
-function renderAdminProducts(){
-  const el = $("#panelProducts");
-  el.innerHTML = `
-    <div class="row" style="justify-content:space-between">
-      <div style="font-weight:900">Produkte</div>
-      <div class="row">
-        <button class="btn secondary" id="btnNewProd">Neues Produkt</button>
-        <button class="btn" id="btnReloadProd">Neu laden</button>
-      </div>
-    </div>
-    <div class="hr"></div>
-
-    <div id="prodEditor"></div>
-
-    <div class="hr"></div>
-    <div style="overflow:auto">
-      <table>
-        <thead><tr><th>Bild</th><th>Name</th><th>Kategorie</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
-        <tbody id="prodTable"></tbody>
-      </table>
-    </div>
-  `;
-
-  $("#btnReloadProd").onclick = async ()=>{ await loadAllPublic(); renderAdminProducts(); };
-  $("#btnNewProd").onclick = ()=>openProdEditor(null);
-
-  const tb = $("#prodTable");
-  tb.innerHTML = "";
-  if(products.length===0){
-    tb.innerHTML = `<tr><td colspan="5" class="muted">Keine Produkte</td></tr>`;
-    return;
-  }
-
-  for(const p of products){
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:54px;height:54px;border-radius:12px;object-fit:cover;border:1px solid var(--border)">` : `<span class="muted">—</span>`}</td>
-      <td><b>${escapeHtml(p.name)}</b><div class="muted" style="font-size:12px">${escapeHtml(idShort(p.id))}</div></td>
-      <td>${escapeHtml(catName(p.category_id))}</td>
-      <td>${fmtRes(p.resources)}</td>
-      <td class="row">
-        <button class="btn" data-edit="${p.id}">Bearbeiten</button>
-        <button class="btn danger" data-del="${p.id}">Löschen</button>
-      </td>
-    `;
-    tb.appendChild(tr);
-  }
-
-  tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>openProdEditor(b.getAttribute("data-edit")));
-  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
-    const id = b.getAttribute("data-del");
-    const r = await sb.from("products").delete().eq("id", id);
-    if(r.error){ console.error(r.error); toast("Löschen fehlgeschlagen (RLS?)."); return; }
-    await loadAllPublic();
-    renderAdminProducts();
-  });
-}
-
-function openProdEditor(productId){
-  const target = $("#prodEditor");
-  const isNew = !productId;
-  const p = isNew
-    ? { name:"", category_id:null, image_url:"", resources:[] }
-    : JSON.parse(JSON.stringify(products.find(x=>x.id===productId)));
-
-  target.innerHTML = `
-    <div style="font-weight:900; margin-bottom:8px">${isNew ? "Neues Produkt" : "Produkt bearbeiten"}</div>
-
-    <div class="split">
-      <div>
-        <div class="note">Name</div>
-        <input id="peName" value="${escapeHtml(p.name)}" placeholder="Produktname" />
-
-        <div style="height:10px"></div>
-        <div class="note">Kategorie</div>
-        <select id="peCat"></select>
-
-        <div style="height:10px"></div>
-        <div class="note">Bild URL (optional)</div>
-        <input id="peImg" value="${escapeHtml(p.image_url||"")}" placeholder="https://..." />
-
-        <div class="row" style="margin-top:12px">
-          <button class="btn success" id="peSave">✅ Speichern</button>
-          <button class="btn danger" id="peCancel">❌ Abbrechen</button>
-        </div>
-        <div class="note" style="margin-top:8px">Tip: Bild-URL kann z.B. GitHub Raw oder Imgur sein.</div>
-      </div>
-
-      <div>
-        <div style="font-weight:900; margin-bottom:6px">Ressourcen</div>
-        <div class="row">
-          <input id="rName" placeholder="Ressource" />
-          <input
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  await loadPublic();
+});
 </script>
+
 </body>
 </html>
