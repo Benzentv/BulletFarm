@@ -415,36 +415,35 @@ async function loadPublic(){
   }
   showBanner("Supabase verbunden ✅ — lade Daten…");
 
-  // Settings (Theme + Title)
-try{
-  const s = await sb.from("shop_settings").select("data").eq("id",1).maybeSingle();
-  const data = s.data?.data;
+  // Settings laden + cachen + Theme anwenden
+  try{
+    const s = await sb.from("shop_settings").select("data").eq("id",1).maybeSingle();
+    const data = s.data?.data || {};
+    window.__shopSettings = data;
 
-  if(data?.title){
-    document.getElementById("brandTitle").textContent = data.title;
+    if(data.title){
+      document.getElementById("brandTitle").textContent = data.title;
+    }
+
+    const c = data.colors || {};
+    const root = document.documentElement.style;
+    if(c.bg) root.setProperty("--bg", c.bg);
+    if(c.card) root.setProperty("--card", c.card);
+    if(c.text) root.setProperty("--text", c.text);
+    if(c.muted) root.setProperty("--muted", c.muted);
+    if(c.primary) root.setProperty("--primary", c.primary);
+    if(c.success) root.setProperty("--success", c.success);
+    if(c.danger) root.setProperty("--danger", c.danger);
+  }catch(e){
+    console.warn("settings load failed", e);
+    window.__shopSettings = {};
   }
 
-  // Theme anwenden (colors -> CSS Variablen)
-  const c = data?.colors || {};
-  const root = document.documentElement.style;
+  const catRes = await sb.from("categories").select("*").order("created_at", {ascending:true});
+  categories = catRes.data || [];
 
-  if(c.bg) root.setProperty("--bg", c.bg);
-  if(c.card) root.setProperty("--card", c.card);
-  if(c.text) root.setProperty("--text", c.text);
-  if(c.muted) root.setProperty("--muted", c.muted);
-  if(c.primary) root.setProperty("--primary", c.primary);
-  if(c.success) root.setProperty("--success", c.success);
-  if(c.danger) root.setProperty("--danger", c.danger);
-}catch(e){
-  console.warn("settings load failed", e);
-}
-
-
-  const c = await sb.from("categories").select("*").order("created_at", {ascending:true});
-  categories = c.data || [];
-
-  const p = await sb.from("products").select("*").order("created_at", {ascending:false});
-  products = p.data || [];
+  const prodRes = await sb.from("products").select("*").order("created_at", {ascending:false});
+  products = prodRes.data || [];
 
   renderFilter();
   renderProducts();
@@ -467,12 +466,37 @@ document.getElementById("btnCheckout").onclick = async ()=>{
     return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty };
   });
 
-  const ins = await sb.from("orders").insert({ status:"offen", customer:{name,phone}, items });
+  const ins = await sb
+    .from("orders")
+    .insert({ status:"offen", customer:{name,phone}, items })
+    .select("id")
+    .maybeSingle();
   if(ins.error){
     console.error(ins.error);
     alert("Bestellung fehlgeschlagen (RLS insert?)");
     return;
   }
+
+  // ✅ Notify über Supabase Edge Function (falls gespeichert)
+  try{
+    const n = window.__shopSettings?.notify;
+    if(n?.enabled && n?.edgeFunctionUrl){
+      await fetch(n.edgeFunctionUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({
+          order_id: ins.data?.id || null,
+          order: { status:"offen", customer:{name,phone}, items }
+        })
+      });
+    }
+  }catch(e){
+    console.warn("Notify failed", e);
+  }
+
   cart = [];
   saveCart();
   renderCart();
@@ -961,9 +985,16 @@ function renderAdminTheme(){
 
   document.getElementById("tSave").onclick = async ()=>{
     applyPreview();
-    const data = {
+
+    // ✅ MERGE (damit notify erhalten bleibt)
+    const curRow = await sb.from("shop_settings").select("data").eq("id", 1).maybeSingle();
+    const base = curRow.data?.data || {};
+
+    const merged = {
+      ...base,
       title: (document.getElementById("tTitle").value||"").trim() || "BulletFarm",
       colors: {
+        ...(base.colors || {}),
         bg: document.getElementById("tBg").value,
         card: document.getElementById("tCard").value,
         text: document.getElementById("tText").value,
@@ -973,8 +1004,11 @@ function renderAdminTheme(){
         danger: document.getElementById("tDanger").value,
       }
     };
-    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
+
+    const r = await sb.from("shop_settings").update({ data: merged }).eq("id", 1);
     if(r.error){ console.error(r.error); alert("Theme speichern fehlgeschlagen (RLS?)"); return; }
+
+    window.__shopSettings = merged;
     alert("✅ Theme gespeichert.");
   };
 }
@@ -1041,7 +1075,7 @@ async function loadOrders(){
 }
 
 
-/* ========= Admin: Notify (Edge Function URL speichern) ========= */
+/* ========= Admin: Notify (URL anzeigen + MERGE speichern) ========= */
 function renderAdminNotify(){
   const el = document.getElementById("panelNotify");
   el.innerHTML = `
@@ -1049,7 +1083,7 @@ function renderAdminNotify(){
       <div class="head"><b>Notify</b></div>
       <div class="body">
         <div class="muted" style="font-size:12px">
-          Trage hier nur die Edge Function URL ein (keine Webhooks im Frontend!).
+          Trage hier die Edge Function URL ein. (Speicherung in shop_settings → data.notify)
         </div>
         <div style="height:10px"></div>
         <input id="nfUrl" placeholder="https://...supabase.co/functions/v1/notify-order" />
@@ -1058,12 +1092,32 @@ function renderAdminNotify(){
       </div>
     </div>
   `;
+
+  // Feld mit aktuellem Wert füllen (aus geladenen Settings)
+  const current = (window.__shopSettings?.notify?.edgeFunctionUrl) || "";
+  document.getElementById("nfUrl").value = current;
+
   document.getElementById("nfSave").onclick = async ()=>{
     const edgeUrl = (document.getElementById("nfUrl").value||"").trim();
-    const data = { notify: { enabled: !!edgeUrl, edgeFunctionUrl: edgeUrl } };
-    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
+
+    // ✅ MERGE (damit colors/title erhalten bleiben)
+    const cur = await sb.from("shop_settings").select("data").eq("id", 1).maybeSingle();
+    const base = cur.data?.data || {};
+
+    const merged = {
+      ...base,
+      notify: {
+        ...(base.notify || {}),
+        enabled: !!edgeUrl,
+        edgeFunctionUrl: edgeUrl
+      }
+    };
+
+    const r = await sb.from("shop_settings").update({ data: merged }).eq("id", 1);
     if(r.error){ console.error(r.error); alert("Notify speichern fehlgeschlagen (RLS?)"); return; }
-    alert("Notify gespeichert.");
+
+    window.__shopSettings = merged;
+    alert("✅ Notify gespeichert.");
   };
 }
 
