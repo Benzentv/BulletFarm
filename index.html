@@ -981,6 +981,8 @@ function renderAdminTheme(){
     }
   };
 
+  }
+  
   const r = await sb.from("shop_settings").update({ data: merged }).eq("id", 1);
   if(r.error){ console.error(r.error); alert("Theme speichern fehlgeschlagen (RLS?)"); return; }
 
@@ -1068,12 +1070,27 @@ function renderAdminNotify(){
     </div>
   `;
   document.getElementById("nfSave").onclick = async ()=>{
-    const edgeUrl = (document.getElementById("nfUrl").value||"").trim();
-    const data = { notify: { enabled: !!edgeUrl, edgeFunctionUrl: edgeUrl } };
-    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
-    if(r.error){ console.error(r.error); alert("Notify speichern fehlgeschlagen (RLS?)"); return; }
-    alert("Notify gespeichert.");
+  const edgeUrl = (document.getElementById("nfUrl").value||"").trim();
+
+  // ✅ Erst aktuelle Settings laden und dann mergen (damit colors bleibt)
+  const cur = await sb.from("shop_settings").select("data").eq("id", 1).maybeSingle();
+  const base = cur.data?.data || {};
+
+  const merged = {
+    ...base,
+    notify: {
+      ...(base.notify || {}),
+      enabled: !!edgeUrl,
+      edgeFunctionUrl: edgeUrl
+    }
   };
+
+  const r = await sb.from("shop_settings").update({ data: merged }).eq("id", 1);
+  if(r.error){ console.error(r.error); alert("Notify speichern fehlgeschlagen (RLS?)"); return; }
+
+  alert("✅ Notify gespeichert.");
+};
+
 }
 
 /* ========= Hook: nach Start Auth Listener ========= */
