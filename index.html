@@ -415,12 +415,30 @@ async function loadPublic(){
   }
   showBanner("Supabase verbunden ✅ — lade Daten…");
 
-  // Settings (optional)
-  try{
-    const s = await sb.from("shop_settings").select("data").eq("id",1).maybeSingle();
-    const title = s.data?.data?.title;
-    if(title) document.getElementById("brandTitle").textContent = title;
-  }catch{}
+  // Settings (Theme + Title)
+try{
+  const s = await sb.from("shop_settings").select("data").eq("id",1).maybeSingle();
+  const data = s.data?.data;
+
+  if(data?.title){
+    document.getElementById("brandTitle").textContent = data.title;
+  }
+
+  // Theme anwenden (colors -> CSS Variablen)
+  const c = data?.colors || {};
+  const root = document.documentElement.style;
+
+  if(c.bg) root.setProperty("--bg", c.bg);
+  if(c.card) root.setProperty("--card", c.card);
+  if(c.text) root.setProperty("--text", c.text);
+  if(c.muted) root.setProperty("--muted", c.muted);
+  if(c.primary) root.setProperty("--primary", c.primary);
+  if(c.success) root.setProperty("--success", c.success);
+  if(c.danger) root.setProperty("--danger", c.danger);
+}catch(e){
+  console.warn("settings load failed", e);
+}
+
 
   const c = await sb.from("categories").select("*").order("created_at", {ascending:true});
   categories = c.data || [];
