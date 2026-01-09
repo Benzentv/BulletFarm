@@ -116,6 +116,15 @@
   border-radius:12px;
   overflow:hidden;
   background: rgba(255,255,255,.03);
+  position: relative;
+}
+.favOverlay{
+  position:absolute;
+  top:8px;
+  right:8px;
+  z-index:2;
+  padding:6px 10px;
+  backdrop-filter: blur(6px);
 }
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
 
@@ -431,6 +440,7 @@ function renderProducts(){
     div.innerHTML = `
       ${img ? `
         <div class="previewBox" style="margin-bottom:10px">
+          <button class="favBtn favOverlay ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">${favActive ? "★" : "☆"}</button>
           <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
         </div>
       ` : ``}
@@ -523,6 +533,7 @@ function renderCart(){
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>
+        ${p ? `<button class="favBtn ${isFav(p.id) ? "active" : ""}" data-fav="${p.id}" title="Merken" style="padding:4px 8px; margin-right:6px">${isFav(p.id) ? "★" : "☆"}</button>` : ``}
         <b>${escapeHtml(name)}</b>${multLabel}
         <div style="font-size:12px">${variantLabel}</div>
       </td>
@@ -536,7 +547,18 @@ function renderCart(){
     tb.appendChild(tr);
   }
 
-  function pulseQty(key){
+  
+
+// Favoriten-Buttons im Warenkorb
+tb.querySelectorAll("[data-fav]").forEach(b=>{
+  b.onclick = ()=>{
+    const pid = b.getAttribute("data-fav");
+    toggleFav(pid);
+    renderCart(); // Button-Status aktualisieren
+    renderProducts(); // Shop-Ansicht aktualisieren (falls offen)
+  };
+});
+function pulseQty(key){
     const el = document.getElementById("qty_"+key);
     if(!el) return;
     el.classList.remove("pulse");
@@ -574,7 +596,7 @@ function renderCartSummary(totals){
 
   if(!totals || totals.size===0){
     box.innerHTML = `
-      <div class="cartSummaryTitle">Du bezahlst insgesamt:</div>
+      <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
       <div class="muted">— keine Ressourcen —</div>
     `;
     return;
@@ -584,7 +606,7 @@ function renderCartSummary(totals){
   ).join(" ");
 
   box.innerHTML = `
-    <div class="cartSummaryTitle">Du bezahlst insgesamt:</div>
+    <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
     <div class="cartSummaryBig">${chips}</div>
   `;
 }
@@ -896,6 +918,22 @@ function renderAdminProducts(){
           <div id="resList" class="chips"></div>
         </div>
 
+<div style="height:12px"></div>
+
+<div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
+  <b>Varianten</b>
+  <div class="muted" style="font-size:12px; margin-top:4px">name / multiplier (wirkt auf Ressourcen)</div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+    <input id="vName" placeholder="Variante (z.B. Small)" style="flex:1; min-width:160px" />
+    <input id="vMult" type="number" step="0.1" placeholder="Multiplier" value="1" style="width:140px" />
+    <button id="btnAddVar">Hinzufügen</button>
+  </div>
+
+  <div style="height:10px"></div>
+  <div id="varList" class="chips"></div>
+</div>
+
         <div style="height:12px"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <button class="success" id="btnSaveProd">${editProductId ? "✅ Speichern" : "✅ Hinzufügen"}</button>
@@ -935,9 +973,14 @@ function renderAdminProducts(){
 function getEditorState(){
   return {
     resources: [],
+    variants: [],
     setResources(newRes){
       this.resources = newRes;
       renderResChips(this);
+    },
+    setVariants(newVars){
+      this.variants = newVars;
+      renderVarChips(this);
     }
   };
 }
@@ -962,6 +1005,24 @@ function setupEditor(st){
     document.getElementById("rAmt").value="";
   };
 
+// Varianten hinzufügen
+document.getElementById("btnAddVar").onclick = ()=>{
+  const name = (document.getElementById("vName").value||"").trim() || "Variante";
+  const mult = Number(document.getElementById("vMult").value);
+  if(!Number.isFinite(mult) || mult<=0){
+    alert("Bitte einen positiven Multiplier eingeben.");
+    return;
+  }
+  st.setVariants([...(st.variants||[]), { name, multiplier: mult }]);
+  document.getElementById("vName").value="";
+  document.getElementById("vMult").value="1";
+};
+
+// Default: Standard-Variante, wenn leer
+if(!Array.isArray(st.variants) || st.variants.length===0){
+  st.setVariants([{ name:"Standard", multiplier: 1 }]);
+}
+
   // Speichern/Hinzufügen
   document.getElementById("btnSaveProd").onclick = async ()=>{
     const name = (document.getElementById("pName").value||"").trim();
@@ -974,7 +1035,8 @@ function setupEditor(st){
       name,
       category_id: (cat==="none") ? null : cat,
       image_url,
-      resources: st.resources || []
+      resources: st.resources || [],
+      variants: (st.variants || []).filter(v=>v && String(v.name||'').trim())
     };
 
     let r;
@@ -1006,6 +1068,7 @@ function setupEditor(st){
 
   // initial chips
   renderResChips(st);
+  renderVarChips(st);
 }
 
 function fillEditorFromProduct(st, productId){
@@ -1019,6 +1082,7 @@ function fillEditorFromProduct(st, productId){
     imgEl.value = "";
     updateImagePreview("");
     st.setResources([]);
+    st.setVariants([{ name:"Standard", multiplier: 1 }]);
     return;
   }
 
@@ -1030,6 +1094,7 @@ function fillEditorFromProduct(st, productId){
   imgEl.value = p.image_url || "";
   updateImagePreview(p.image_url || "");
   st.setResources(Array.isArray(p.resources) ? p.resources : []);
+  st.setVariants(Array.isArray(p.variants) && p.variants.length ? p.variants : [{ name:"Standard", multiplier: 1 }]);
 }
 
 function updateImagePreview(url){
@@ -1067,6 +1132,32 @@ function renderResChips(st){
     const next = (st.resources||[]).slice();
     next.splice(idx,1);
     st.setResources(next);
+  });
+}
+
+function renderVarChips(st){
+  const box = document.getElementById("varList");
+  if(!box) return;
+  const vars = st.variants || [];
+  if(vars.length===0){
+    box.innerHTML = `<span class="muted">Keine Varianten</span>`;
+    return;
+  }
+  box.innerHTML = vars.map((v,idx)=>
+    `<span class="chip">
+      <span class="dot" style="background:rgba(255,255,255,.35)"></span>
+      ${escapeHtml(v.name)} <span class="muted">(×${Number(v.multiplier)||1})</span>
+      <button data-vdel="${idx}" class="danger" style="padding:2px 8px; border-radius:999px; margin-left:6px">x</button>
+    </span>`
+  ).join("");
+
+  box.querySelectorAll("[data-vdel]").forEach(b=>b.onclick=()=>{
+    const idx = Number(b.getAttribute("data-vdel"));
+    const next = (st.variants||[]).slice();
+    next.splice(idx,1);
+    // nie komplett leer: Standard
+    if(next.length===0) next.push({ name:"Standard", multiplier: 1 });
+    st.setVariants(next);
   });
 }
 
