@@ -119,6 +119,52 @@
 }
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
 
+/* === UX Upgrades: Cart Sticky Summary + Animations + Favorites === */
+.favBtn{
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.04);
+  color: var(--text);
+  border-radius:999px;
+  padding:6px 10px;
+  cursor:pointer;
+  font-weight:900;
+}
+.favBtn.active{
+  border-color: rgba(251,191,36,.65);
+  box-shadow: 0 0 0 3px rgba(251,191,36,.10) inset;
+}
+.cartSummary{
+  position: sticky;
+  bottom: 0;
+  margin-top: 12px;
+  border:1px solid var(--border);
+  background: rgba(17,24,38,.92);
+  border-radius: 14px;
+  padding:12px;
+  backdrop-filter: blur(8px);
+}
+.cartSummaryTitle{
+  font-weight:900;
+  font-size:14px;
+  margin-bottom:8px;
+  color: var(--primary);
+}
+.cartSummaryBig{
+  font-weight:1000;
+  font-size:16px;
+  color: var(--primary);
+  letter-spacing:.2px;
+}
+.pulse{
+  animation: pulseScale .18s ease-in-out;
+}
+@keyframes pulseScale{
+  from{ transform: scale(1); }
+  50%{ transform: scale(1.06); }
+  to{ transform: scale(1); }
+}
+
+
     /* modal */
     .modalBg{
       position:fixed; inset:0;
@@ -150,6 +196,7 @@
   <div class="brand" id="brandTitle">BulletFarm</div>
   <div class="tabs">
     <div class="pill active" id="tabShop">Shop</div>
+    <div class="pill" id="tabFav">⭐ Favoriten</div>
     <div class="pill" id="tabCart">Warenkorb <span class="count" id="cartCount">0</span></div>
     <div class="pill" id="tabAdmin">⚙️ Admin</div>
   </div>
@@ -162,7 +209,7 @@
     <!-- SHOP -->
     <section class="card" id="shopCard">
       <div class="head">
-        <b>Produkte</b>
+        <b id="shopHeading">Produkte</b>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <select id="catFilter"></select>
           <input id="searchBox" placeholder="Suchen…" />
@@ -190,6 +237,8 @@
             <tbody id="cartRows"></tbody>
           </table>
         </div>
+        <div style="height:10px"></div>
+        <div id="cartSummary" class="cartSummary"></div>
         <div style="height:10px"></div>
         <input id="custName" placeholder="Name (optional)" />
         <div style="height:8px"></div>
@@ -270,24 +319,49 @@ let sb = null;
 let categories = [];
 let products = [];
 let cart = JSON.parse(localStorage.getItem("bf_cart") || "[]");
+let favs = new Set(JSON.parse(localStorage.getItem("bf_favs") || "[]"));
+// Migration: alte Cart-Einträge ohne Varianten/Key
+cart = (Array.isArray(cart) ? cart : []).map(it=>{
+  const productId = it.productId;
+  const variantName = it.variantName || "Standard";
+  const variantMultiplier = Number(it.variantMultiplier||1) || 1;
+  const key = it.key || (productId + "||" + variantName + "||" + variantMultiplier);
+  return { key, productId, variantName, variantMultiplier, qty: Number(it.qty||1)||1 };
+});
 
 function saveCart(){
   localStorage.setItem("bf_cart", JSON.stringify(cart));
   document.getElementById("cartCount").textContent = String(cart.reduce((s,x)=>s + x.qty, 0));
 }
+function saveFavs(){
+  localStorage.setItem("bf_favs", JSON.stringify(Array.from(favs)));
+}
+function isFav(id){ return favs.has(id); }
+function toggleFav(id){
+  if(favs.has(id)) favs.delete(id); else favs.add(id);
+  saveFavs();
+  renderProducts();
+}
 
 /* ========= Tabs (stabil, ohne Abhängigkeiten) ========= */
 function setTab(t){
   document.getElementById("tabShop").classList.toggle("active", t==="shop");
+  document.getElementById("tabFav").classList.toggle("active", t==="fav");
   document.getElementById("tabCart").classList.toggle("active", t==="cart");
   document.getElementById("tabAdmin").classList.toggle("active", t==="admin");
 
-  document.getElementById("shopCard").style.display = (t==="shop") ? "" : "none";
+  // Shop/Favoriten nutzen dieselbe Karte, aber andere Ansicht
+  document.getElementById("shopCard").style.display = (t==="shop" || t==="fav") ? "" : "none";
   document.getElementById("cartCard").style.display = (t==="cart") ? "" : "none";
   document.getElementById("adminCard").style.display = (t==="admin") ? "" : "none";
+
+  window.__shopMode = (t==="fav") ? "fav" : "shop";
+  // neu rendern, damit Favoriten-Filter greift
+  if(typeof renderProducts === "function") renderProducts();
 }
 
 document.getElementById("tabShop").onclick = ()=>setTab("shop");
+document.getElementById("tabFav").onclick = ()=>setTab("fav");
 document.getElementById("tabCart").onclick = ()=>setTab("cart");
 document.getElementById("tabAdmin").onclick = ()=>setTab("admin");
 
@@ -312,20 +386,35 @@ function renderFilter(){
   document.getElementById("searchBox").oninput = renderProducts;
 }
 
+
+function getVariants(p){
+  const v = p?.variants;
+  if(Array.isArray(v) && v.length){
+    return v.map(x=>({
+      name: String(x.name ?? "Variante").trim() || "Variante",
+      multiplier: Number(x.multiplier ?? 1) || 1
+    }));
+  }
+  return [{ name: "Standard", multiplier: 1 }];
+}
+
 function renderProducts(){
   const list = document.getElementById("productList");
   list.innerHTML = "";
+  const heading = document.getElementById("shopHeading");
+  if(heading) heading.textContent = (window.__shopMode==="fav") ? "⭐ Favoriten" : "Produkte";
 
   const filter = document.getElementById("catFilter").value;
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
 
   let shown = products.slice();
+  if(window.__shopMode==="fav"){ shown = shown.filter(p=>isFav(p.id)); }
   if(filter==="none") shown = shown.filter(p=>!p.category_id);
   else if(filter!=="all") shown = shown.filter(p=>p.category_id===filter);
   if(q) shown = shown.filter(p=>String(p.name||"").toLowerCase().includes(q));
 
   if(shown.length===0){
-    list.innerHTML = `<div class="muted">Keine Produkte gefunden.</div>`;
+    list.innerHTML = `<div class="muted">${window.__shopMode==="fav" ? "Noch keine Favoriten. Tippe ☆ um Produkte zu merken." : "Keine Produkte gefunden."}</div>`;
     return;
   }
 
@@ -333,30 +422,67 @@ function renderProducts(){
     const div = document.createElement("div");
     div.className = "prod";
     const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
-div.innerHTML = `
-  ${img ? `
-    <div class="previewBox" style="margin-bottom:10px">
-      <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
-    </div>
-  ` : ``}
-  <b>${p.name}</b>
-  <div class="muted" style="font-size:12px; margin-top:4px">${p.category_id || "—"}</div>
-  <div class="chips">${fmtRes(p.resources || [])}</div>
-  <div style="height:8px"></div>
-  <button class="primary" data-add="${p.id}">In den Warenkorb</button>
-`;
+    const variants = getVariants(p);
+    const favActive = isFav(p.id);
+    const variantOptions = variants.map((v,idx)=>
+      `<option value="${idx}" data-m="${v.multiplier}" data-n="${escapeHtml(v.name)}">${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`
+    ).join("");
+
+    div.innerHTML = `
+      ${img ? `
+        <div class="previewBox" style="margin-bottom:10px">
+          <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
+        </div>
+      ` : ``}
+
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
+        <div style="min-width:0">
+          <b>${escapeHtml(p.name)}</b>
+          <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
+        </div>
+        <button class="favBtn ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">
+          ${favActive ? "★" : "☆"}
+        </button>
+      </div>
+
+      ${variants.length>1 ? `
+        <div style="height:8px"></div>
+        <select class="variantSel" data-vid="${p.id}" style="width:100%">
+          ${variantOptions}
+        </select>
+      ` : ``}
+
+      <div class="chips">${fmtRes(p.resources || [])}</div>
+      <div style="height:8px"></div>
+      <button class="primary" data-add="${p.id}">In den Warenkorb</button>
+    `;
 
     list.appendChild(div);
   }
   list.querySelectorAll("[data-add]").forEach(b=>{
-    b.onclick = ()=>addToCart(b.getAttribute("data-add"));
+    b.onclick = ()=>{
+      const pid = b.getAttribute("data-add");
+      const sel = list.querySelector(`.variantSel[data-vid="${pid}"]`);
+      if(sel){
+        const opt = sel.options[sel.selectedIndex];
+        const variantName = opt?.getAttribute("data-n") || opt?.textContent || "Standard";
+        const variantMultiplier = Number(opt?.getAttribute("data-m") || "1") || 1;
+        addToCart(pid, variantName, variantMultiplier);
+      }else{
+        addToCart(pid, "Standard", 1);
+      }
+    };
+  });
+  list.querySelectorAll("[data-fav]").forEach(b=>{
+    b.onclick = ()=>toggleFav(b.getAttribute("data-fav"));
   });
 }
 
-function addToCart(productId){
-  const it = cart.find(x=>x.productId===productId);
+function addToCart(productId, variantName="Standard", variantMultiplier=1){
+  const key = productId + "||" + String(variantName||"Standard") + "||" + String(variantMultiplier||1);
+  const it = cart.find(x=>x.key===key);
   if(it) it.qty += 1;
-  else cart.push({ productId, qty: 1 });
+  else cart.push({ key, productId, variantName, variantMultiplier, qty: 1 });
   saveCart();
   renderCart();
 }
@@ -365,41 +491,104 @@ function renderCart(){
   saveCart();
   const tb = document.getElementById("cartRows");
   tb.innerHTML = "";
+
+  // Totals (Ressourcen)
+  const totals = new Map(); // name -> {amount,color}
+  function addTotals(resArr, qty, mult){
+    (resArr||[]).forEach(r=>{
+      const name = String(r.name||"").trim();
+      if(!name) return;
+      const amount = (Number(r.amount)||0) * qty * (Number(mult)||1);
+      const prev = totals.get(name) || { amount: 0, color: r.color || "#fff" };
+      prev.amount += amount;
+      if(r.color) prev.color = r.color;
+      totals.set(name, prev);
+    });
+  }
+
   if(cart.length===0){
     tb.innerHTML = `<tr><td colspan="3" class="muted">Warenkorb ist leer.</td></tr>`;
+    renderCartSummary(totals);
     return;
   }
+
   for(const item of cart){
     const p = products.find(x=>x.id===item.productId);
     const name = p ? p.name : "(Produkt fehlt)";
+    const variantLabel = item.variantName && item.variantName!=="Standard" ? ` • <span class="muted">${escapeHtml(item.variantName)}</span>` : "";
+    const multLabel = (Number(item.variantMultiplier)||1) !== 1 ? ` <span class="muted">(×${Number(item.variantMultiplier)||1})</span>` : "";
+
+    if(p) addTotals(p.resources||[], item.qty, item.variantMultiplier);
+
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><b>${name}</b></td>
-      <td>${item.qty}</td>
       <td>
-        <button data-inc="${item.productId}">+</button>
-        <button data-dec="${item.productId}">-</button>
-        <button class="danger" data-rem="${item.productId}">X</button>
+        <b>${escapeHtml(name)}</b>${multLabel}
+        <div style="font-size:12px">${variantLabel}</div>
+      </td>
+      <td><span class="count" id="qty_${escapeHtml(item.key)}">${item.qty}</span></td>
+      <td>
+        <button data-inc="${escapeHtml(item.key)}">+</button>
+        <button data-dec="${escapeHtml(item.key)}">-</button>
+        <button class="danger" data-rem="${escapeHtml(item.key)}">X</button>
       </td>
     `;
     tb.appendChild(tr);
   }
+
+  function pulseQty(key){
+    const el = document.getElementById("qty_"+key);
+    if(!el) return;
+    el.classList.remove("pulse");
+    void el.offsetWidth; // restart animation
+    el.classList.add("pulse");
+    setTimeout(()=>el.classList.remove("pulse"), 250);
+  }
+
   tb.querySelectorAll("[data-inc]").forEach(b=>b.onclick=()=>{
-    const id = b.getAttribute("data-inc");
-    const it = cart.find(x=>x.productId===id);
-    if(it){ it.qty++; saveCart(); renderCart(); }
+    const key = b.getAttribute("data-inc");
+    const it = cart.find(x=>x.key===key);
+    if(it){ it.qty++; saveCart(); renderCart(); pulseQty(key); }
   });
   tb.querySelectorAll("[data-dec]").forEach(b=>b.onclick=()=>{
-    const id = b.getAttribute("data-dec");
-    const it = cart.find(x=>x.productId===id);
-    if(it){ it.qty=Math.max(0,it.qty-1); if(it.qty===0) cart=cart.filter(x=>x.productId!==id); saveCart(); renderCart(); }
+    const key = b.getAttribute("data-dec");
+    const it = cart.find(x=>x.key===key);
+    if(it){
+      it.qty = Math.max(0, it.qty-1);
+      if(it.qty===0) cart = cart.filter(x=>x.key!==key);
+      saveCart(); renderCart(); pulseQty(key);
+    }
   });
   tb.querySelectorAll("[data-rem]").forEach(b=>b.onclick=()=>{
-    const id = b.getAttribute("data-rem");
-    cart = cart.filter(x=>x.productId!==id);
+    const key = b.getAttribute("data-rem");
+    cart = cart.filter(x=>x.key!==key);
     saveCart(); renderCart();
   });
+
+  renderCartSummary(totals);
 }
+
+function renderCartSummary(totals){
+  const box = document.getElementById("cartSummary");
+  if(!box) return;
+
+  if(!totals || totals.size===0){
+    box.innerHTML = `
+      <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
+      <div class="muted">— keine Ressourcen —</div>
+    `;
+    return;
+  }
+  const chips = Array.from(totals.entries()).map(([name,v])=>
+    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${Math.round(v.amount)}</b></span>`
+  ).join(" ");
+
+  box.innerHTML = `
+    <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
+    <div class="cartSummaryBig">${chips}</div>
+  `;
+}
+
 
 document.getElementById("btnClearCart").onclick = ()=>{
   cart = [];
@@ -463,7 +652,7 @@ document.getElementById("btnCheckout").onclick = async ()=>{
 
   const items = cart.map(ci=>{
     const p = products.find(x=>x.id===ci.productId);
-    return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty };
+    return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty, variantName: ci.variantName || "Standard", variantMultiplier: Number(ci.variantMultiplier||1)||1, resources: p?.resources || [] };
   });
 
   const ins = await sb
