@@ -119,14 +119,6 @@
 }
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
 
-.cartSticky{
-  position: sticky;
-  bottom: 0;
-  padding-top: 12px;
-  margin-top: 12px;
-  background: linear-gradient(to top, rgba(17,24,38,1), rgba(17,24,38,.85), rgba(17,24,38,0));
-}
-
     /* modal */
     .modalBg{
       position:fixed; inset:0;
@@ -150,31 +142,6 @@
       display:flex; justify-content:space-between; align-items:center;
     }
     .modalBody{padding:14px}
-  
-    .iconBtn{
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.04);
-      color: var(--text);
-      border-radius: 999px;
-      padding: 6px 10px;
-      cursor:pointer;
-      font-weight:900;
-    }
-    .iconBtn.active{
-      border-color: rgba(251,191,36,.6);
-      box-shadow: 0 0 0 3px rgba(251,191,36,.10) inset;
-    }
-    .tag{
-      display:inline-flex; align-items:center;
-      font-size:12px;
-      color: var(--muted);
-      border:1px solid var(--border);
-      background: rgba(255,255,255,.03);
-      padding:4px 10px;
-      border-radius:999px;
-      margin-right:6px;
-    }
-
   </style>
 </head>
 <body>
@@ -198,7 +165,6 @@
         <b>Produkte</b>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <select id="catFilter"></select>
-          <label class="tag"><input type="checkbox" id="favOnly" style="margin-right:6px">Nur gemerkt</label>
           <input id="searchBox" placeholder="Suchen…" />
           <button id="btnReload" class="primary">Neu laden</button>
         </div>
@@ -225,16 +191,11 @@
           </table>
         </div>
         <div style="height:10px"></div>
-        <div><b>Ressourcen gesamt</b></div>
-        <div id="cartTotals" class="chips" style="margin-top:8px"></div>
-        <div class="cartSticky">
-        <div style="height:14px"></div>
         <input id="custName" placeholder="Name (optional)" />
         <div style="height:8px"></div>
         <input id="custPhone" placeholder="Telefon (optional)" />
         <div style="height:10px"></div>
         <button id="btnCheckout" class="success" style="width:100%">✅ Bestellung absenden</button>
-        </div>
         <div class="muted" style="margin-top:10px; font-size:12px">
           Bestellungen werden in Supabase gespeichert.
         </div>
@@ -288,33 +249,7 @@
 
 <div class="muted" id="adminNote" style="margin-top:12px; font-size:12px"></div>
 
-  
-<!-- ORDER CONFIRM MODAL -->
-<div class="modalBg" id="confirmBg">
-  <div class="modal">
-    <div class="modalHead">
-      <div><b>✅ Bestellung gespeichert</b></div>
-      <button id="btnCloseConfirm">✖</button>
-    </div>
-    <div class="modalBody">
-      <div id="confirmText" class="muted"></div>
-      <div style="height:12px"></div>
-      <div style="overflow:auto">
-        <table>
-          <thead><tr><th>Produkt</th><th>Variante</th><th>Menge</th></tr></thead>
-          <tbody id="confirmRows"></tbody>
-        </table>
-      </div>
-      <div style="height:12px"></div>
-      <div><b>Ressourcen gesamt</b></div>
-      <div id="confirmTotals" class="chips" style="margin-top:8px"></div>
-      <div style="height:14px"></div>
-      <button class="primary" id="btnConfirmOk" style="width:100%">OK</button>
-    </div>
   </div>
-</div>
-
-</div>
 </div>
 
 <script>
@@ -335,41 +270,6 @@ let sb = null;
 let categories = [];
 let products = [];
 let cart = JSON.parse(localStorage.getItem("bf_cart") || "[]");
-
-let favorites = new Set(JSON.parse(localStorage.getItem("bf_favs") || "[]"));
-function saveFavs(){
-  localStorage.setItem("bf_favs", JSON.stringify(Array.from(favorites)));
-}
-function isFav(id){ return favorites.has(id); }
-function toggleFav(id){
-  if(favorites.has(id)) favorites.delete(id); else favorites.add(id);
-  saveFavs();
-}
-
-
-
-function sumResourcesForItems(items){
-  const totals = new Map();
-  for(const it of (items||[])){
-    const mult = Number(it.variantMultiplier ?? it.variant?.multiplier ?? 1) || 1;
-    const qty = Number(it.qty||0) || 0;
-    const res = it.resources || (products.find(x=>x.id===it.productId)?.resources) || [];
-    for(const r of res){
-      const key = r.name || "";
-      const prev = totals.get(key) || {amount:0, color:r.color||"#fff"};
-      prev.amount += (Number(r.amount)||0) * qty * mult;
-      if(r.color) prev.color = r.color;
-      totals.set(key, prev);
-    }
-  }
-  return totals;
-}
-function totalsToChips(totals){
-  if(!totals || totals.size===0) return `<span class="muted">—</span>`;
-  return Array.from(totals.entries()).map(([name,v])=>
-    `<span class="chip"><span class="dot" style="background:${v.color}"></span>${escapeHtml(name)}: <b>${v.amount}</b></span>`
-  ).join(" ");
-}
 
 function saveCart(){
   localStorage.setItem("bf_cart", JSON.stringify(cart));
@@ -408,14 +308,8 @@ function renderFilter(){
   sel.appendChild(new Option("Keine Kategorie", "none"));
   for(const c of categories) sel.appendChild(new Option(c.name, c.id));
   sel.value = prev;
-
   sel.onchange = renderProducts;
   document.getElementById("searchBox").oninput = renderProducts;
-
-  const favOnly = document.getElementById("favOnly");
-  if(favOnly){
-    favOnly.onchange = renderProducts;
-  }
 }
 
 function renderProducts(){
@@ -424,16 +318,11 @@ function renderProducts(){
 
   const filter = document.getElementById("catFilter").value;
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
-  const favOnly = !!document.getElementById("favOnly")?.checked;
 
   let shown = products.slice();
-
   if(filter==="none") shown = shown.filter(p=>!p.category_id);
   else if(filter!=="all") shown = shown.filter(p=>p.category_id===filter);
-
   if(q) shown = shown.filter(p=>String(p.name||"").toLowerCase().includes(q));
-
-  if(favOnly) shown = shown.filter(p=>isFav(p.id));
 
   if(shown.length===0){
     list.innerHTML = `<div class="muted">Keine Produkte gefunden.</div>`;
@@ -443,75 +332,31 @@ function renderProducts(){
   for(const p of shown){
     const div = document.createElement("div");
     div.className = "prod";
+    const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
+div.innerHTML = `
+  ${img ? `
+    <div class="previewBox" style="margin-bottom:10px">
+      <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
+    </div>
+  ` : ``}
+  <b>${p.name}</b>
+  <div class="muted" style="font-size:12px; margin-top:4px">${p.category_id || "—"}</div>
+  <div class="chips">${fmtRes(p.resources || [])}</div>
+  <div style="height:8px"></div>
+  <button class="primary" data-add="${p.id}">In den Warenkorb</button>
+`;
 
-    const imgUrl = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
-    const variants = Array.isArray(p.variants) ? p.variants : [];
-    const hasVariants = variants.length>0;
-
-    const varSelect = hasVariants ? `
-      <select data-varsel="${p.id}" style="width:100%">
-        ${variants.map((v,idx)=>`<option value="${idx}">${escapeHtml(v.name||("Variante "+(idx+1)))}${v.multiplier && Number(v.multiplier)!==1 ? " (x"+Number(v.multiplier)+")" : ""}</option>`).join("")}
-      </select>
-    ` : `<div class="muted" style="font-size:12px">Standard</div>`;
-
-    div.innerHTML = `
-      <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start">
-        <div style="flex:1; min-width:0">
-          <b>${escapeHtml(p.name)}</b>
-          <div class="muted" style="font-size:12px; margin-top:4px">${p.category_id || "—"}</div>
-        </div>
-        <button class="iconBtn ${isFav(p.id) ? "active":""}" data-fav="${p.id}" title="Merken">⭐</button>
-      </div>
-
-      ${imgUrl ? `
-        <div class="previewBox" style="margin:10px 0">
-          <img src="${imgUrl}" alt="" onerror="this.closest('.previewBox').style.display='none'">
-        </div>
-      ` : ``}
-
-      <div class="chips">${fmtRes(p.resources || [])}</div>
-
-      <div style="height:10px"></div>
-      <div class="muted" style="font-size:12px; margin-bottom:6px">Variante</div>
-      ${varSelect}
-
-      <div style="height:10px"></div>
-      <button class="primary" data-add="${p.id}" style="width:100%">In den Warenkorb</button>
-    `;
     list.appendChild(div);
   }
-
-  list.querySelectorAll("[data-fav]").forEach(b=>{
-    b.onclick = ()=>{
-      const id = b.getAttribute("data-fav");
-      toggleFav(id);
-      renderProducts();
-    };
-  });
-
   list.querySelectorAll("[data-add]").forEach(b=>{
-    b.onclick = ()=>{
-      const id = b.getAttribute("data-add");
-      const sel = list.querySelector(`[data-varsel="${CSS.escape(id)}"]`);
-      const idx = sel ? Number(sel.value) : -1;
-      const p = products.find(x=>x.id===id);
-      const v = (p && Array.isArray(p.variants) && idx>=0) ? p.variants[idx] : null;
-      addToCart(id, v);
-    };
+    b.onclick = ()=>addToCart(b.getAttribute("data-add"));
   });
 }
 
-function addToCart(productId, variant){
-  const variantKey = variant ? (variant.name || "Variante") : "";
-  const it = cart.find(x=>x.productId===productId && (x.variantKey||"")===variantKey);
+function addToCart(productId){
+  const it = cart.find(x=>x.productId===productId);
   if(it) it.qty += 1;
-  else cart.push({
-    productId,
-    qty: 1,
-    variantKey,
-    variantName: variant ? (variant.name || "Variante") : "Standard",
-    variantMultiplier: variant && variant.multiplier ? Number(variant.multiplier) : 1
-  });
+  else cart.push({ productId, qty: 1 });
   saveCart();
   renderCart();
 }
@@ -520,65 +365,40 @@ function renderCart(){
   saveCart();
   const tb = document.getElementById("cartRows");
   tb.innerHTML = "";
-
   if(cart.length===0){
     tb.innerHTML = `<tr><td colspan="3" class="muted">Warenkorb ist leer.</td></tr>`;
-    const ct = document.getElementById("cartTotals");
-    if(ct) ct.innerHTML = `<span class="muted">—</span>`;
     return;
   }
-
   for(const item of cart){
     const p = products.find(x=>x.id===item.productId);
     const name = p ? p.name : "(Produkt fehlt)";
-    const variantLabel = item.variantName || "Standard";
-
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>
-        <b>${escapeHtml(name)}</b>
-        <div class="muted" style="font-size:12px">${escapeHtml(variantLabel)}${item.variantMultiplier && Number(item.variantMultiplier)!==1 ? " • x"+Number(item.variantMultiplier) : ""}</div>
-      </td>
+      <td><b>${name}</b></td>
       <td>${item.qty}</td>
-      <td style="display:flex; gap:6px; flex-wrap:wrap">
-        <button data-inc="${escapeHtml(item.productId)}" data-vk="${escapeHtml(item.variantKey||"")}">+</button>
-        <button data-dec="${escapeHtml(item.productId)}" data-vk="${escapeHtml(item.variantKey||"")}">-</button>
-        <button class="danger" data-rem="${escapeHtml(item.productId)}" data-vk="${escapeHtml(item.variantKey||"")}">X</button>
+      <td>
+        <button data-inc="${item.productId}">+</button>
+        <button data-dec="${item.productId}">-</button>
+        <button class="danger" data-rem="${item.productId}">X</button>
       </td>
     `;
     tb.appendChild(tr);
   }
-
-  function findCartItem(pid, vk){
-    return cart.find(x=>x.productId===pid && (x.variantKey||"")===(vk||""));
-  }
-
   tb.querySelectorAll("[data-inc]").forEach(b=>b.onclick=()=>{
     const id = b.getAttribute("data-inc");
-    const vk = b.getAttribute("data-vk") || "";
-    const it = findCartItem(id, vk);
+    const it = cart.find(x=>x.productId===id);
     if(it){ it.qty++; saveCart(); renderCart(); }
   });
   tb.querySelectorAll("[data-dec]").forEach(b=>b.onclick=()=>{
     const id = b.getAttribute("data-dec");
-    const vk = b.getAttribute("data-vk") || "";
-    const it = findCartItem(id, vk);
-    if(it){
-      it.qty=Math.max(0,it.qty-1);
-      if(it.qty===0) cart = cart.filter(x=>!(x.productId===id && (x.variantKey||"")===(vk||"")));
-      saveCart(); renderCart();
-    }
+    const it = cart.find(x=>x.productId===id);
+    if(it){ it.qty=Math.max(0,it.qty-1); if(it.qty===0) cart=cart.filter(x=>x.productId!==id); saveCart(); renderCart(); }
   });
   tb.querySelectorAll("[data-rem]").forEach(b=>b.onclick=()=>{
     const id = b.getAttribute("data-rem");
-    const vk = b.getAttribute("data-vk") || "";
-    cart = cart.filter(x=>!(x.productId===id && (x.variantKey||"")===(vk||"")));
+    cart = cart.filter(x=>x.productId!==id);
     saveCart(); renderCart();
   });
-
-  const totals = sumResourcesForItems(cart);
-  const ct = document.getElementById("cartTotals");
-  if(ct) ct.innerHTML = totalsToChips(totals);
 }
 
 document.getElementById("btnClearCart").onclick = ()=>{
@@ -634,36 +454,6 @@ async function loadPublic(){
 document.getElementById("btnReload").onclick = loadPublic;
 
 /* ========= Checkout ========= */
-function openConfirm(orderId, payload){
-  const bg = document.getElementById("confirmBg");
-  const rows = document.getElementById("confirmRows");
-  const totalsEl = document.getElementById("confirmTotals");
-  const txt = document.getElementById("confirmText");
-
-  txt.innerHTML = `Bestell-ID: <b>${escapeHtml(String(orderId))}</b>`;
-  rows.innerHTML = "";
-  const items = payload.items || [];
-  for(const it of items){
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${escapeHtml(it.name || "—")}</td>
-      <td class="muted">${escapeHtml(it.variantName || "Standard")}</td>
-      <td><b>${Number(it.qty)||0}</b></td>
-    `;
-    rows.appendChild(tr);
-  }
-  const totals = sumResourcesForItems(items);
-  totalsEl.innerHTML = totalsToChips(totals);
-
-  bg.style.display = "flex";
-}
-function closeConfirm(){
-  document.getElementById("confirmBg").style.display = "none";
-}
-document.getElementById("btnCloseConfirm").onclick = closeConfirm;
-document.getElementById("btnConfirmOk").onclick = closeConfirm;
-document.getElementById("confirmBg").onclick = (e)=>{ if(e.target.id==="confirmBg") closeConfirm(); };
-
 document.getElementById("btnCheckout").onclick = async ()=>{
   if(cart.length===0){ alert("Warenkorb ist leer"); return; }
   if(!sb){ alert("Supabase nicht bereit"); return; }
@@ -673,54 +463,46 @@ document.getElementById("btnCheckout").onclick = async ()=>{
 
   const items = cart.map(ci=>{
     const p = products.find(x=>x.id===ci.productId);
-    return {
-      productId: ci.productId,
-      name: p?.name || "Unbekannt",
-      qty: ci.qty,
-      variantName: ci.variantName || "Standard",
-      variantMultiplier: Number(ci.variantMultiplier || 1) || 1,
-      resources: p?.resources || []
-    };
+    return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty };
   });
 
-  const payload = {
-    status: "offen",
-    customer: { name, phone },
-    items
-  };
-
-  const ins = await sb.from("orders").insert(payload).select("id").maybeSingle();
+  const ins = await sb
+    .from("orders")
+    .insert({ status:"offen", customer:{name,phone}, items })
+    .select("id")
+    .maybeSingle();
   if(ins.error){
     console.error(ins.error);
     alert("Bestellung fehlgeschlagen (RLS insert?)");
     return;
   }
 
-  // Notify über Edge Function (falls aktiviert)
+  // ✅ Notify über Supabase Edge Function (falls gespeichert)
   try{
     const n = window.__shopSettings?.notify;
     if(n?.enabled && n?.edgeFunctionUrl){
       await fetch(n.edgeFunctionUrl, {
-        method:"POST",
-        headers:{
-          "Content-Type":"application/json",
-          "Authorization":"Bearer " + SUPABASE_ANON_KEY
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + SUPABASE_ANON_KEY
         },
-        body: JSON.stringify({ order_id: ins.data?.id, order: payload })
+        body: JSON.stringify({
+          order_id: ins.data?.id || null,
+          order: { status:"offen", customer:{name,phone}, items }
+        })
       });
     }
   }catch(e){
     console.warn("Notify failed", e);
   }
 
-  const orderId = ins.data?.id;
   cart = [];
   saveCart();
   renderCart();
-
-  openConfirm(orderId, payload);
+  alert("✅ Bestellung gespeichert!");
+  setTab("shop");
 };
-
 
 /* ========= Admin (Login + Panels) ========= */
 const adminTabsEl = document.getElementById("adminTabs");
@@ -900,7 +682,6 @@ function renderAdminProducts(){
           <input id="pName" placeholder="Produktname" />
           <select id="pCat">${catOptions}</select>
           <input id="pImg" placeholder="Bild URL (optional)" style="grid-column: 1 / -1" />
-          <textarea id="pVariants" placeholder=\'Varianten (JSON) z.B. [{"name":"Small","multiplier":1},{"name":"Large","multiplier":2}]\' style="grid-column: 1 / -1; min-height:80px"></textarea>
         </div>
 
         <div style="height:10px"></div>
@@ -997,27 +778,6 @@ function setupEditor(st){
     const name = (document.getElementById("pName").value||"").trim();
     const cat = document.getElementById("pCat").value;
     const image_url = (document.getElementById("pImg").value||"").trim() || null;
-    const variantsRaw = (document.getElementById("pVariants").value||"").trim();
-    let variants = [];
-    if(variantsRaw){
-      try{ variants = JSON.parse(variantsRaw); }catch(e){ alert("Varianten JSON ist ungültig."); return; }
-      if(!Array.isArray(variants)){ alert("Varianten müssen ein JSON-Array sein."); return; }
-      variants = variants.map(v=>({
-        name: String(v?.name || "Variante"),
-        multiplier: Number(v?.multiplier || 1) || 1
-      }));
-    }
-
-    const variantsRaw = (document.getElementById("pVariants").value||"").trim();
-    let variants = [];
-    if(variantsRaw){
-      try{ variants = JSON.parse(variantsRaw); }catch(e){ alert("Varianten JSON ist ungültig."); return; }
-      if(!Array.isArray(variants)) { alert("Varianten müssen ein JSON-Array sein."); return; }
-      variants = variants.map(v=>({
-        name: String(v.name||"Variante"),
-        multiplier: (v.multiplier===undefined||v.multiplier===null||v.multiplier==="") ? 1 : Number(v.multiplier)
-      }));
-    }
 
     if(!name){ alert("Produktname fehlt."); return; }
 
@@ -1025,8 +785,7 @@ function setupEditor(st){
       name,
       category_id: (cat==="none") ? null : cat,
       image_url,
-      resources: st.resources || [],
-      variants: variants
+      resources: st.resources || []
     };
 
     let r;
@@ -1064,13 +823,11 @@ function fillEditorFromProduct(st, productId){
   const nameEl = document.getElementById("pName");
   const catEl = document.getElementById("pCat");
   const imgEl = document.getElementById("pImg");
-  const varEl = document.getElementById("pVariants");
 
   if(!productId){
     nameEl.value = "";
     catEl.value = "none";
     imgEl.value = "";
-    if(varEl) varEl.value = "";
     updateImagePreview("");
     st.setResources([]);
     return;
@@ -1082,7 +839,6 @@ function fillEditorFromProduct(st, productId){
   nameEl.value = p.name || "";
   catEl.value = p.category_id ? p.category_id : "none";
   imgEl.value = p.image_url || "";
-  if(varEl) varEl.value = JSON.stringify(Array.isArray(p.variants)?p.variants:[], null, 2);
   updateImagePreview(p.image_url || "");
   st.setResources(Array.isArray(p.resources) ? p.resources : []);
 }
@@ -1268,194 +1024,133 @@ function renderAdminOrders(){
       <div class="head" style="justify-content:space-between">
         <b>Bestellungen</b>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
-          <button id="btnMakeTestOrder" class="primary">Testbestellung erzeugen</button>
-          <button id="btnTestDiscord" class="success">Test + Discord</button>
+          <button id="btnTestOrder" class="primary">Testbestellung</button>
+          <button id="btnTestOrderNotify" class="success">Test + Discord</button>
           <button id="btnLoadOrders">Laden</button>
         </div>
       </div>
       <div class="body" style="overflow:auto">
         <table>
-          <thead>
-            <tr>
-              <th>Zeit</th>
-              <th>Kunde</th>
-              <th>Status</th>
-              <th>Summe</th>
-              <th>Aktion</th>
-            </tr>
-          </thead>
+          <thead><tr><th>Zeit</th><th>ID</th><th>Status</th><th>Aktion</th></tr></thead>
           <tbody id="ordersTable"></tbody>
         </table>
-        <div class="muted" style="font-size:12px; margin-top:10px">
-          Tipp: Klick auf eine Zeile zeigt Details (Produkte + Ressourcen).
-        </div>
       </div>
     </div>
   `;
-
   document.getElementById("btnLoadOrders").onclick = loadOrders;
-  document.getElementById("btnMakeTestOrder").onclick = makeTestOrder;
-  document.getElementById("btnTestDiscord").onclick = makeTestOrderAndDiscord;
+  document.getElementById("btnTestOrder").onclick = createTestOrder;
+  document.getElementById("btnTestOrderNotify").onclick = createTestOrderAndNotify;
 }
 
-async function makeTestOrder(){
-  if(!products || products.length===0){
-    alert("Keine Produkte vorhanden.");
-    return null;
+
+
+async function createTestOrder(){
+  const res = await createTestOrderInternal(false);
+  if(res?.ok){
+    alert("✅ Testbestellung erstellt. ID: " + String(res.orderId).slice(0,8));
+    await loadOrders();
   }
-  // Nimm 1-2 zufällige Produkte
-  const pick = (arr)=>arr[Math.floor(Math.random()*arr.length)];
-  const p1 = pick(products);
-  const p2 = (products.length>1 && Math.random()>.5) ? pick(products.filter(x=>x.id!==p1.id)) : null;
-
-  const items = [
-    {
-      productId: p1.id,
-      name: p1.name,
-      qty: 1,
-      variantName: "Standard",
-      variantMultiplier: 1,
-      resources: p1.resources || []
-    }
-  ];
-  if(p2){
-    items.push({
-      productId: p2.id,
-      name: p2.name,
-      qty: 1,
-      variantName: "Standard",
-      variantMultiplier: 1,
-      resources: p2.resources || []
-    });
-  }
-
-  const payload = {
-    status: "offen",
-    customer: { name: "Testkunde", phone: "000000" },
-    items
-  };
-
-  const ins = await sb.from("orders").insert(payload).select("id").maybeSingle();
-  if(ins.error){ console.error(ins.error); alert("Testbestellung fehlgeschlagen (RLS?)"); return null; }
-
-  await loadOrders();
-  return { orderId: ins.data?.id, payload };
 }
 
-async function makeTestOrderAndDiscord(){
-  const created = await makeTestOrder();
-  if(!created) return;
-
-  const n = window.__shopSettings?.notify;
-  if(!n?.enabled || !n?.edgeFunctionUrl){
-    alert("Notify ist nicht aktiviert (Admin → Notify).");
-    return;
+async function createTestOrderAndNotify(){
+  const res = await createTestOrderInternal(true);
+  if(res?.ok){
+    alert("✅ Test + Discord gesendet. ID: " + String(res.orderId).slice(0,8));
+    await loadOrders();
   }
+}
 
+async function createTestOrderInternal(sendNotify){
   try{
-    const r = await fetch(n.edgeFunctionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type":"application/json",
-        "Authorization": "Bearer " + SUPABASE_ANON_KEY
-      },
-      body: JSON.stringify({ order_id: created.orderId, order: created.payload })
-    });
-    if(!r.ok){
-      const t = await r.text().catch(()=> "");
-      console.warn("Notify failed:", r.status, t);
-      alert("Discord Notify fehlgeschlagen (Status " + r.status + "). Logs prüfen.");
-      return;
+    // 1–2 zufällige Produkte aus dem aktuellen Cache (oder Fallback)
+    const pick = (arr)=>arr[Math.floor(Math.random()*arr.length)];
+    const chosen = [];
+    if(Array.isArray(products) && products.length){
+      chosen.push(pick(products));
+      if(products.length>1 && Math.random()>0.4) chosen.push(pick(products));
     }
-    alert("✅ Discord Nachricht gesendet. Order: " + created.orderId);
+
+    const items = chosen.length ? chosen.map(p=>({
+      productId: p.id,
+      name: p.name,
+      qty: 1 + Math.floor(Math.random()*3),
+      resources: Array.isArray(p.resources) ? p.resources : []
+    })) : [{ productId: "TEST", name: "Testprodukt", qty: 1, resources: [] }];
+
+    const payload = {
+      status: "offen",
+      customer: { name: "Testkunde", phone: "000000" },
+      items
+    };
+
+    const ins = await sb.from("orders").insert(payload).select("id").maybeSingle();
+    if(ins.error){
+      console.error(ins.error);
+      alert("Testbestellung fehlgeschlagen (RLS insert?)");
+      return { ok:false };
+    }
+
+    const orderId = ins.data?.id;
+
+    if(sendNotify){
+      const n = window.__shopSettings?.notify;
+      if(n?.enabled && n?.edgeFunctionUrl){
+        const r = await fetch(n.edgeFunctionUrl, {
+          method:"POST",
+          headers:{
+            "Content-Type":"application/json",
+            "Authorization":"Bearer " + SUPABASE_ANON_KEY
+          },
+          body: JSON.stringify({ order_id: orderId, order: payload })
+        });
+        if(!r.ok){
+          const txt = await r.text().catch(()=> "");
+          console.warn("notify-order failed", r.status, txt);
+          alert("Bestellung erstellt, aber Discord-Notify fehlgeschlagen. Status: " + r.status);
+        }
+      } else {
+        alert("Notify ist nicht aktiviert oder URL fehlt (Admin → Notify).");
+      }
+    }
+
+    return { ok:true, orderId };
   }catch(e){
-    console.warn("Notify error", e);
-    alert("Discord Notify Fehler (Network).");
+    console.error(e);
+    alert("Testbestellung fehlgeschlagen.");
+    return { ok:false };
   }
 }
 
 async function loadOrders(){
   const tb = document.getElementById("ordersTable");
-  tb.innerHTML = `<tr><td colspan="5" class="muted">Lade…</td></tr>`;
+  tb.innerHTML = `<tr><td colspan="4" class="muted">Lade…</td></tr>`;
 
   const r = await sb.from("orders").select("*").order("created_at", {ascending:false});
   if(r.error){
     console.error(r.error);
-    tb.innerHTML = `<tr><td colspan="5" class="muted">Fehler (RLS?)</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="4" class="muted">Fehler (RLS?)</td></tr>`;
     return;
   }
 
-  const rows = r.data || [];
-  tb.innerHTML = rows.length ? "" : `<tr><td colspan="5" class="muted">Keine Bestellungen</td></tr>`;
+  ordersCache = r.data || [];
+  tb.innerHTML = ordersCache.length ? "" : `<tr><td colspan="4" class="muted">Keine Bestellungen</td></tr>`;
 
-  rows.forEach((o)=>{
-    const cust = o.customer || {};
-    const items = o.items || [];
-    const totals = sumResourcesForItems(items);
-
-    const sumText = totals.size
-      ? Array.from(totals.entries()).slice(0,3).map(([n,v])=>`${n}:${v.amount}`).join(" • ") + (totals.size>3 ? " …" : "")
-      : "—";
-
+  ordersCache.forEach(o=>{
     const tr = document.createElement("tr");
-    tr.style.cursor = "pointer";
     tr.innerHTML = `
       <td>${new Date(o.created_at).toLocaleString("de-DE")}</td>
-      <td>
-        <b>${escapeHtml(cust.name || "—")}</b>
-        <div class="muted" style="font-size:12px">${escapeHtml(cust.phone || "")}</div>
-        <div class="muted" style="font-size:12px">ID: ${escapeHtml(String(o.id).slice(0,8))}</div>
-      </td>
-      <td><b>${escapeHtml(o.status || "offen")}</b></td>
-      <td class="muted" style="font-size:12px">${escapeHtml(sumText)}</td>
+      <td class="muted">${String(o.id).slice(0,8)}</td>
+      <td><b>${o.status || "offen"}</b></td>
       <td style="display:flex; gap:6px; flex-wrap:wrap">
-        <button data-st="offen" data-id="${o.id}">offen</button>
         <button class="success" data-st="bearbeitet" data-id="${o.id}">bearbeitet</button>
+        <button data-st="offen" data-id="${o.id}">offen</button>
         <button class="danger" data-st="storniert" data-id="${o.id}">storniert</button>
       </td>
     `;
     tb.appendChild(tr);
-
-    const dtr = document.createElement("tr");
-    dtr.style.display = "none";
-    dtr.innerHTML = `
-      <td colspan="5">
-        <div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
-          <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; align-items:center">
-            <b>Details</b>
-            <span class="muted">Bestellung: ${escapeHtml(String(o.id))}</span>
-          </div>
-          <div style="height:10px"></div>
-          <div style="overflow:auto">
-            <table>
-              <thead><tr><th>Produkt</th><th>Variante</th><th>Menge</th></tr></thead>
-              <tbody>
-                ${(items||[]).map(i=>`
-                  <tr>
-                    <td><b>${escapeHtml(i.name||"—")}</b></td>
-                    <td class="muted">${escapeHtml(i.variantName||"Standard")}</td>
-                    <td>${Number(i.qty)||0}</td>
-                  </tr>
-                `).join("")}
-              </tbody>
-            </table>
-          </div>
-          <div style="height:10px"></div>
-          <div><b>Ressourcen gesamt</b></div>
-          <div class="chips" style="margin-top:8px">${totalsToChips(totals)}</div>
-        </div>
-      </td>
-    `;
-    tb.appendChild(dtr);
-
-    tr.addEventListener("click", (e)=>{
-      if((e.target||{}).tagName === "BUTTON") return;
-      dtr.style.display = (dtr.style.display==="none") ? "" : "none";
-    });
   });
 
-  tb.querySelectorAll("[data-st]").forEach(b=>b.onclick=async (e)=>{
-    e.stopPropagation();
+  tb.querySelectorAll("[data-st]").forEach(b=>b.onclick=async ()=>{
     const id = b.getAttribute("data-id");
     const status = b.getAttribute("data-st");
     const u = await sb.from("orders").update({ status }).eq("id", id);
