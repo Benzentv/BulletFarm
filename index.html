@@ -864,103 +864,23 @@ function renderProductsTable(){
   });
 }
 
-/* ========= Admin: Theme (mehr Farben + Live Vorschau + Speichern) ========= */
+/* ========= Admin: Theme (shop_settings id=1) ========= */
 function renderAdminTheme(){
   const el = document.getElementById("panelTheme");
-
-  // aktuelle Werte aus CSS lesen
-  const css = getComputedStyle(document.documentElement);
-  const cur = {
-    title: document.getElementById("brandTitle").textContent || "BulletFarm",
-    bg: css.getPropertyValue("--bg").trim(),
-    card: css.getPropertyValue("--card").trim(),
-    text: css.getPropertyValue("--text").trim(),
-    muted: css.getPropertyValue("--muted").trim(),
-    primary: css.getPropertyValue("--primary").trim(),
-    success: css.getPropertyValue("--success").trim(),
-    danger: css.getPropertyValue("--danger").trim(),
-  };
-
   el.innerHTML = `
     <div class="card" style="margin-top:10px">
       <div class="head"><b>Theme</b></div>
       <div class="body">
-        <div class="muted" style="font-size:12px">Live Vorschau + Speichern in shop_settings (id=1)</div>
-
+        <div class="muted" style="font-size:12px">Speichert in shop_settings (id=1) als JSON.</div>
         <div style="height:10px"></div>
-        <input id="tTitle" placeholder="Shop Titel" value="${escapeHtml(cur.title)}" />
-
-        <div style="height:12px"></div>
-
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
-          <label class="muted">Background <input id="tBg" type="color" style="width:100%;height:44px;padding:6px" /></label>
-          <label class="muted">Card <input id="tCard" type="color" style="width:100%;height:44px;padding:6px" /></label>
-          <label class="muted">Text <input id="tText" type="color" style="width:100%;height:44px;padding:6px" /></label>
-          <label class="muted">Muted <input id="tMuted" type="color" style="width:100%;height:44px;padding:6px" /></label>
-          <label class="muted">Primary <input id="tPrimary" type="color" style="width:100%;height:44px;padding:6px" /></label>
-          <label class="muted">Success <input id="tSuccess" type="color" style="width:100%;height:44px;padding:6px" /></label>
-          <label class="muted">Danger <input id="tDanger" type="color" style="width:100%;height:44px;padding:6px" /></label>
-        </div>
-
-        <div style="height:12px"></div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap">
-          <button class="primary" id="tPreview">Vorschau</button>
-          <button class="success" id="tSave">Speichern</button>
-          <button id="tReset">Reset (reload)</button>
-        </div>
+        <input id="stTitle" placeholder="Shop Titel" />
+        <div style="height:8px"></div>
+        <input id="stBg" placeholder="Background Farbe z.B. #0b0f14" />
+        <div style="height:10px"></div>
+        <button class="primary" id="btnSaveTheme">Speichern</button>
       </div>
     </div>
   `;
-
-  // Helper: CSS->Color input braucht Hex. Wenn du rgba nutzt, bleibt es leer – daher Defaults.
-  function setColor(id, fallback){
-    const el = document.getElementById(id);
-    el.value = fallback;
-  }
-  // Standardwerte (du kannst später erweitern)
-  setColor("tBg", "#0b0f14");
-  setColor("tCard", "#111826");
-  setColor("tText", "#e9eef6");
-  setColor("tMuted", "#9aa6b2");
-  setColor("tPrimary", "#7dd3fc");
-  setColor("tSuccess", "#34d399");
-  setColor("tDanger", "#fb7185");
-
-  function applyPreview(){
-    document.getElementById("brandTitle").textContent = (document.getElementById("tTitle").value||"").trim() || "BulletFarm";
-    const root = document.documentElement.style;
-    root.setProperty("--bg", document.getElementById("tBg").value);
-    root.setProperty("--card", document.getElementById("tCard").value);
-    root.setProperty("--text", document.getElementById("tText").value);
-    root.setProperty("--muted", document.getElementById("tMuted").value);
-    root.setProperty("--primary", document.getElementById("tPrimary").value);
-    root.setProperty("--success", document.getElementById("tSuccess").value);
-    root.setProperty("--danger", document.getElementById("tDanger").value);
-  }
-
-  document.getElementById("tPreview").onclick = applyPreview;
-  document.getElementById("tReset").onclick = ()=>loadPublic();
-
-  document.getElementById("tSave").onclick = async ()=>{
-    applyPreview();
-    const data = {
-      title: (document.getElementById("tTitle").value||"").trim() || "BulletFarm",
-      colors: {
-        bg: document.getElementById("tBg").value,
-        card: document.getElementById("tCard").value,
-        text: document.getElementById("tText").value,
-        muted: document.getElementById("tMuted").value,
-        primary: document.getElementById("tPrimary").value,
-        success: document.getElementById("tSuccess").value,
-        danger: document.getElementById("tDanger").value,
-      }
-    };
-    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
-    if(r.error){ console.error(r.error); alert("Theme speichern fehlgeschlagen (RLS?)"); return; }
-    alert("✅ Theme gespeichert.");
-  };
-}
-
   // optional: wenn settings existiert, füllen
   document.getElementById("stTitle").value = document.getElementById("brandTitle").textContent || "";
   document.getElementById("stBg").value = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "";
@@ -975,7 +895,9 @@ function renderAdminTheme(){
   };
 }
 
-/* ========= Admin: Orders (list) ========= */
+/* ========= Admin: Orders (list + Status ändern) ========= */
+let ordersCache = [];
+
 function renderAdminOrders(){
   const el = document.getElementById("panelOrders");
   el.innerHTML = `
@@ -986,7 +908,7 @@ function renderAdminOrders(){
       </div>
       <div class="body" style="overflow:auto">
         <table>
-          <thead><tr><th>Zeit</th><th>Status</th><th>ID</th></tr></thead>
+          <thead><tr><th>Zeit</th><th>ID</th><th>Status</th><th>Aktion</th></tr></thead>
           <tbody id="ordersTable"></tbody>
         </table>
       </div>
@@ -997,21 +919,42 @@ function renderAdminOrders(){
 
 async function loadOrders(){
   const tb = document.getElementById("ordersTable");
-  tb.innerHTML = `<tr><td colspan="3" class="muted">Lade…</td></tr>`;
+  tb.innerHTML = `<tr><td colspan="4" class="muted">Lade…</td></tr>`;
+
   const r = await sb.from("orders").select("*").order("created_at", {ascending:false});
-  if(r.error){ console.error(r.error); tb.innerHTML = `<tr><td colspan="3" class="muted">Fehler (RLS?)</td></tr>`; return; }
-  const rows = r.data || [];
-  tb.innerHTML = rows.length ? "" : `<tr><td colspan="3" class="muted">Keine Bestellungen</td></tr>`;
-  rows.forEach(o=>{
+  if(r.error){
+    console.error(r.error);
+    tb.innerHTML = `<tr><td colspan="4" class="muted">Fehler (RLS?)</td></tr>`;
+    return;
+  }
+
+  ordersCache = r.data || [];
+  tb.innerHTML = ordersCache.length ? "" : `<tr><td colspan="4" class="muted">Keine Bestellungen</td></tr>`;
+
+  ordersCache.forEach(o=>{
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${new Date(o.created_at).toLocaleString("de-DE")}</td>
-      <td><b>${o.status || "offen"}</b></td>
       <td class="muted">${String(o.id).slice(0,8)}</td>
+      <td><b>${o.status || "offen"}</b></td>
+      <td style="display:flex; gap:6px; flex-wrap:wrap">
+        <button class="success" data-st="bearbeitet" data-id="${o.id}">bearbeitet</button>
+        <button data-st="offen" data-id="${o.id}">offen</button>
+        <button class="danger" data-st="storniert" data-id="${o.id}">storniert</button>
+      </td>
     `;
     tb.appendChild(tr);
   });
+
+  tb.querySelectorAll("[data-st]").forEach(b=>b.onclick=async ()=>{
+    const id = b.getAttribute("data-id");
+    const status = b.getAttribute("data-st");
+    const u = await sb.from("orders").update({ status }).eq("id", id);
+    if(u.error){ console.error(u.error); alert("Status speichern fehlgeschlagen (RLS?)"); return; }
+    await loadOrders();
+  });
 }
+
 
 /* ========= Admin: Notify (Edge Function URL speichern) ========= */
 function renderAdminNotify(){
