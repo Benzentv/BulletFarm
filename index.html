@@ -434,21 +434,338 @@ document.getElementById("btnCheckout").onclick = async ()=>{
   setTab("shop");
 };
 
-/* ========= Admin login basic ========= */
+/* ========= Admin (Login + Panels) ========= */
+const adminTabsEl = document.getElementById("adminTabs");
+const adminPanelsEl = document.getElementById("adminPanels");
+const adminNoteEl = document.getElementById("adminNote");
+
+const ADMIN_SECTIONS = [
+  { id:"products", label:"Produkte" },
+  { id:"categories", label:"Kategorien" },
+  { id:"theme", label:"Theme" },
+  { id:"orders", label:"Bestellungen" },
+  { id:"notify", label:"Notify" },
+];
+let adminActive = "products";
+
+function showPanel(id){
+  ["panelProducts","panelCategories","panelTheme","panelOrders","panelNotify"].forEach(pid=>{
+    document.getElementById(pid).style.display = (pid === "panel"+id[0].toUpperCase()+id.slice(1)) ? "" : "none";
+  });
+
+  if(id==="products") renderAdminProducts();
+  if(id==="categories") renderAdminCategories();
+  if(id==="theme") renderAdminTheme();
+  if(id==="orders") renderAdminOrders();
+  if(id==="notify") renderAdminNotify();
+}
+
+function renderAdminTabs(){
+  adminTabsEl.innerHTML = "";
+  adminTabsEl.style.display = "flex";
+  ADMIN_SECTIONS.forEach(s=>{
+    const b = document.createElement("button");
+    b.textContent = s.label;
+    b.className = "primary";
+    b.style.opacity = (adminActive===s.id) ? "1" : ".65";
+    b.onclick = ()=>{ adminActive = s.id; renderAdminTabs(); showPanel(s.id); };
+    adminTabsEl.appendChild(b);
+  });
+  adminPanelsEl.style.display = "";
+}
+
+async function refreshAuthUI(){
+  const sess = await sb.auth.getSession();
+  const loggedIn = !!sess.data?.session;
+
+  document.getElementById("btnLogout").style.display = loggedIn ? "" : "none";
+  document.getElementById("loginMsg").textContent = loggedIn
+    ? `Eingeloggt ✅ (${sess.data.session.user.email})`
+    : "Bitte einloggen.";
+
+  adminTabsEl.style.display = loggedIn ? "flex" : "none";
+  adminPanelsEl.style.display = loggedIn ? "" : "none";
+  adminNoteEl.textContent = loggedIn
+    ? "Admin aktiv: Produkte/Kategorien/Theme/Orders/Notify"
+    : "Nur eingeloggte Admins können bearbeiten (RLS).";
+
+  if(loggedIn){
+    renderAdminTabs();
+    showPanel(adminActive);
+  }
+}
+
 document.getElementById("btnLogin").onclick = async ()=>{
   if(!sb){ alert("Supabase nicht bereit"); return; }
   const email = (document.getElementById("adminEmail").value || "").trim();
   const password = (document.getElementById("adminPass").value || "");
   const r = await sb.auth.signInWithPassword({ email, password });
-  document.getElementById("loginMsg").textContent = r.error ? ("Login fehlgeschlagen") : ("Eingeloggt ✅");
-  document.getElementById("btnLogout").style.display = r.error ? "none" : "";
+  if(r.error){
+    console.error(r.error);
+    document.getElementById("loginMsg").textContent = "Login fehlgeschlagen";
+    return;
+  }
+  await refreshAuthUI();
 };
+
 document.getElementById("btnLogout").onclick = async ()=>{
   if(!sb) return;
   await sb.auth.signOut();
-  document.getElementById("loginMsg").textContent = "Ausgeloggt.";
-  document.getElementById("btnLogout").style.display = "none";
+  await refreshAuthUI();
 };
+
+/* ========= Admin: Kategorien (CRUD) ========= */
+function renderAdminCategories(){
+  const el = document.getElementById("panelCategories");
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px">
+      <div class="head"><b>Kategorien</b></div>
+      <div class="body">
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <input id="newCatName" placeholder="Neue Kategorie" />
+          <button class="primary" id="btnAddCat">Hinzufügen</button>
+          <button id="btnReloadCats">Neu laden</button>
+        </div>
+        <div style="height:12px"></div>
+        <div style="overflow:auto">
+          <table>
+            <thead><tr><th>Name</th><th>ID</th><th>Aktion</th></tr></thead>
+            <tbody id="catTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("btnReloadCats").onclick = async ()=>{ await loadPublic(); };
+  document.getElementById("btnAddCat").onclick = async ()=>{
+    const name = (document.getElementById("newCatName").value||"").trim();
+    if(!name) return;
+    const r = await sb.from("categories").insert({ name });
+    if(r.error){ console.error(r.error); alert("Kategorie hinzufügen fehlgeschlagen (RLS?)"); return; }
+    document.getElementById("newCatName").value="";
+    await loadPublic();
+    renderAdminCategories();
+  };
+
+  const tb = document.getElementById("catTable");
+  tb.innerHTML = categories.length ? "" : `<tr><td colspan="3" class="muted">Keine Kategorien</td></tr>`;
+
+  categories.forEach(c=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input data-name="${c.id}" value="${c.name.replaceAll('"','&quot;')}" /></td>
+      <td class="muted">${String(c.id).slice(0,8)}</td>
+      <td>
+        <button class="success" data-save="${c.id}">Speichern</button>
+        <button class="danger" data-del="${c.id}">Löschen</button>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+
+  tb.querySelectorAll("[data-save]").forEach(b=>b.onclick=async ()=>{
+    const id = b.getAttribute("data-save");
+    const name = (tb.querySelector(`[data-name="${id}"]`).value||"").trim() || "Unbenannt";
+    const r = await sb.from("categories").update({ name }).eq("id", id);
+    if(r.error){ console.error(r.error); alert("Update fehlgeschlagen (RLS?)"); return; }
+    await loadPublic(); renderAdminCategories();
+  });
+
+  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
+    const id = b.getAttribute("data-del");
+    const r = await sb.from("categories").delete().eq("id", id);
+    if(r.error){ console.error(r.error); alert("Löschen fehlgeschlagen (RLS?)"); return; }
+    await loadPublic(); renderAdminCategories();
+  });
+}
+
+/* ========= Admin: Produkte (CRUD light) ========= */
+function renderAdminProducts(){
+  const el = document.getElementById("panelProducts");
+  const catOptions = [
+    `<option value="none">Keine Kategorie</option>`,
+    ...categories.map(c=>`<option value="${c.id}">${c.name}</option>`)
+  ].join("");
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px">
+      <div class="head"><b>Produkt hinzufügen</b></div>
+      <div class="body">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px">
+          <input id="pName" placeholder="Produktname" />
+          <select id="pCat">${catOptions}</select>
+          <input id="pImg" placeholder="Bild URL (optional)" style="grid-column: 1 / -1" />
+        </div>
+        <div style="height:10px"></div>
+        <button class="primary" id="btnAddProd">Hinzufügen</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="head" style="justify-content:space-between">
+        <b>Produkte</b>
+        <button id="btnReloadProds">Neu laden</button>
+      </div>
+      <div class="body" style="overflow:auto">
+        <table>
+          <thead><tr><th>Name</th><th>Kategorie</th><th>ID</th><th>Aktion</th></tr></thead>
+          <tbody id="prodTable"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  document.getElementById("btnReloadProds").onclick = async ()=>{ await loadPublic(); renderAdminProducts(); };
+
+  document.getElementById("btnAddProd").onclick = async ()=>{
+    const name = (document.getElementById("pName").value||"").trim();
+    const cat = document.getElementById("pCat").value;
+    const image_url = (document.getElementById("pImg").value||"").trim() || null;
+    if(!name) return;
+
+    const payload = {
+      name,
+      category_id: (cat==="none") ? null : cat,
+      image_url,
+      resources: []
+    };
+    const r = await sb.from("products").insert(payload);
+    if(r.error){ console.error(r.error); alert("Produkt hinzufügen fehlgeschlagen (RLS?)"); return; }
+    document.getElementById("pName").value="";
+    document.getElementById("pImg").value="";
+    await loadPublic();
+    renderAdminProducts();
+  };
+
+  const tb = document.getElementById("prodTable");
+  tb.innerHTML = products.length ? "" : `<tr><td colspan="4" class="muted">Keine Produkte</td></tr>`;
+
+  products.forEach(p=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><b>${p.name}</b></td>
+      <td class="muted">${p.category_id ? p.category_id.slice(0,8) : "—"}</td>
+      <td class="muted">${String(p.id).slice(0,8)}</td>
+      <td>
+        <button class="danger" data-del="${p.id}">Löschen</button>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+
+  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
+    const id = b.getAttribute("data-del");
+    const r = await sb.from("products").delete().eq("id", id);
+    if(r.error){ console.error(r.error); alert("Löschen fehlgeschlagen (RLS?)"); return; }
+    await loadPublic(); renderAdminProducts();
+  });
+}
+
+/* ========= Admin: Theme (shop_settings id=1) ========= */
+function renderAdminTheme(){
+  const el = document.getElementById("panelTheme");
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px">
+      <div class="head"><b>Theme</b></div>
+      <div class="body">
+        <div class="muted" style="font-size:12px">Speichert in shop_settings (id=1) als JSON.</div>
+        <div style="height:10px"></div>
+        <input id="stTitle" placeholder="Shop Titel" />
+        <div style="height:8px"></div>
+        <input id="stBg" placeholder="Background Farbe z.B. #0b0f14" />
+        <div style="height:10px"></div>
+        <button class="primary" id="btnSaveTheme">Speichern</button>
+      </div>
+    </div>
+  `;
+  // optional: wenn settings existiert, füllen
+  document.getElementById("stTitle").value = document.getElementById("brandTitle").textContent || "";
+  document.getElementById("stBg").value = getComputedStyle(document.documentElement).getPropertyValue("--bg").trim() || "";
+
+  document.getElementById("btnSaveTheme").onclick = async ()=>{
+    const title = (document.getElementById("stTitle").value||"").trim();
+    const bg = (document.getElementById("stBg").value||"").trim();
+    const data = { title, colors: { bg } };
+    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
+    if(r.error){ console.error(r.error); alert("Theme speichern fehlgeschlagen (RLS?)"); return; }
+    alert("Theme gespeichert. Neu laden klicken.");
+  };
+}
+
+/* ========= Admin: Orders (list) ========= */
+function renderAdminOrders(){
+  const el = document.getElementById("panelOrders");
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px">
+      <div class="head" style="justify-content:space-between">
+        <b>Bestellungen</b>
+        <button id="btnLoadOrders">Laden</button>
+      </div>
+      <div class="body" style="overflow:auto">
+        <table>
+          <thead><tr><th>Zeit</th><th>Status</th><th>ID</th></tr></thead>
+          <tbody id="ordersTable"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  document.getElementById("btnLoadOrders").onclick = loadOrders;
+}
+
+async function loadOrders(){
+  const tb = document.getElementById("ordersTable");
+  tb.innerHTML = `<tr><td colspan="3" class="muted">Lade…</td></tr>`;
+  const r = await sb.from("orders").select("*").order("created_at", {ascending:false});
+  if(r.error){ console.error(r.error); tb.innerHTML = `<tr><td colspan="3" class="muted">Fehler (RLS?)</td></tr>`; return; }
+  const rows = r.data || [];
+  tb.innerHTML = rows.length ? "" : `<tr><td colspan="3" class="muted">Keine Bestellungen</td></tr>`;
+  rows.forEach(o=>{
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${new Date(o.created_at).toLocaleString("de-DE")}</td>
+      <td><b>${o.status || "offen"}</b></td>
+      <td class="muted">${String(o.id).slice(0,8)}</td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+/* ========= Admin: Notify (Edge Function URL speichern) ========= */
+function renderAdminNotify(){
+  const el = document.getElementById("panelNotify");
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px">
+      <div class="head"><b>Notify</b></div>
+      <div class="body">
+        <div class="muted" style="font-size:12px">
+          Trage hier nur die Edge Function URL ein (keine Webhooks im Frontend!).
+        </div>
+        <div style="height:10px"></div>
+        <input id="nfUrl" placeholder="https://...supabase.co/functions/v1/notify-order" />
+        <div style="height:10px"></div>
+        <button class="primary" id="nfSave">Speichern</button>
+      </div>
+    </div>
+  `;
+  document.getElementById("nfSave").onclick = async ()=>{
+    const edgeUrl = (document.getElementById("nfUrl").value||"").trim();
+    const data = { notify: { enabled: !!edgeUrl, edgeFunctionUrl: edgeUrl } };
+    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
+    if(r.error){ console.error(r.error); alert("Notify speichern fehlgeschlagen (RLS?)"); return; }
+    alert("Notify gespeichert.");
+  };
+}
+
+/* ========= Hook: nach Start Auth Listener ========= */
+window.addEventListener("DOMContentLoaded", async ()=>{
+  // Wenn sb existiert, Auth Listener
+  if(sb){
+    sb.auth.onAuthStateChange(()=>refreshAuthUI());
+    await refreshAuthUI();
+  }
+});
+
 
 /* ========= Start ========= */
 window.addEventListener("DOMContentLoaded", async ()=>{
