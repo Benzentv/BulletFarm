@@ -212,12 +212,23 @@
       <div class="muted" id="loginMsg" style="margin-top:10px"></div>
 
       <div style="height:14px"></div>
-      <div class="muted">
-        Hinweis: Admin-Funktionen kommen als nächstes (CRUD). Wichtig ist jetzt: Tabs + Modal funktionieren stabil.
-      </div>
-    </div>
-  </div>
+
+<!-- Admin Tabs -->
+<div id="adminTabs" style="display:none; gap:8px; flex-wrap:wrap; margin-top:6px"></div>
+
+<div style="height:12px"></div>
+
+<!-- Panels -->
+<div id="adminPanels" style="display:none">
+  <div id="panelProducts"></div>
+  <div id="panelCategories" style="display:none"></div>
+  <div id="panelTheme" style="display:none"></div>
+  <div id="panelOrders" style="display:none"></div>
+  <div id="panelNotify" style="display:none"></div>
 </div>
+
+<div class="muted" id="adminNote" style="margin-top:12px; font-size:12px"></div>
+
 
 <script>
 /* ========= sichtbarer Debug: Seite hat JS geladen ========= */
