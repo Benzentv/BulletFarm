@@ -1299,6 +1299,50 @@ let ordersCache = [];
 let ordersFilter = "all";
 let ordersExpanded = new Set();
 
+function updateOrdersDashboard(allOrders){
+  const el = document.getElementById("ordersDash");
+  if(!el) return;
+  const arr = Array.isArray(allOrders) ? allOrders : [];
+  const count = (s)=>arr.filter(o=>String(o.status||"offen")===s).length;
+  const offen = count("offen");
+  const erledigt = count("bearbeitet");
+  const storniert = count("storniert");
+  const archiv = count("archiviert");
+  el.innerHTML = `
+    <span style="padding:2px 8px; border:1px solid var(--border); border-radius:999px;">Offen: <b style="color:var(--primary)">${offen}</b></span>
+    <span style="padding:2px 8px; border:1px solid var(--border); border-radius:999px; margin-left:6px;">Erledigt: <b>${erledigt}</b></span>
+    <span style="padding:2px 8px; border:1px solid var(--border); border-radius:999px; margin-left:6px;">Storniert: <b>${storniert}</b></span>
+    <span style="padding:2px 8px; border:1px solid var(--border); border-radius:999px; margin-left:6px;">Archiv: <b>${archiv}</b></span>
+  `;
+}
+
+async function autoArchiveOldOrders(days=30){
+  try{
+    const ms = days * 24 * 60 * 60 * 1000;
+    const cutoff = new Date(Date.now() - ms).toISOString();
+
+    // Nur wenn eingeloggt (Admin) – anon darf nicht updaten
+    const sess = await sb.auth.getSession();
+    if(!sess.data?.session) return { ran:false };
+
+    const u = await sb
+      .from("orders")
+      .update({ status: "archiviert" })
+      .lt("created_at", cutoff)
+      .neq("status", "archiviert");
+
+    if(u.error){
+      console.warn("autoArchive failed", u.error);
+      return { ran:true, updated:false };
+    }
+    return { ran:true, updated:true };
+  }catch(e){
+    console.warn("autoArchive exception", e);
+    return { ran:false };
+  }
+}
+
+
 function renderAdminOrders(){
   const el = document.getElementById("panelOrders");
   el.innerHTML = `
@@ -1314,6 +1358,7 @@ function renderAdminOrders(){
             <option value="storniert">Storniert</option>
             <option value="archiviert">Archiv</option>
           </select>
+          <div id="ordersDash" class="muted" style="font-size:12px; margin-right:6px"></div>
           <button id="btnTestOrder" class="primary">Testbestellung</button>
           <button id="btnTestOrderNotify" class="success">Test + Discord</button>
           <button id="btnLoadOrders">Laden</button>
@@ -1339,6 +1384,7 @@ function renderAdminOrders(){
   };
 
   document.getElementById("btnLoadOrders").onclick = loadOrders;
+  updateOrdersDashboard(ordersCache);
   document.getElementById("btnTestOrder").onclick = createTestOrder;
   document.getElementById("btnTestOrderNotify").onclick = createTestOrderAndNotify;
 }
@@ -1486,6 +1532,9 @@ async function createTestOrderInternal(sendNotify){
 
 async function loadOrders(){
   const tb = document.getElementById("ordersTable");
+
+  // 📦 Auto-Archiv: Bestellungen älter als 30 Tage
+  await autoArchiveOldOrders(30);
   tb.innerHTML = `<tr><td colspan="4" class="muted">Lade…</td></tr>`;
 
   const r = await sb.from("orders").select("*").order("created_at", {ascending:false});
@@ -1496,6 +1545,7 @@ async function loadOrders(){
   }
 
   ordersCache = r.data || [];
+  updateOrdersDashboard(ordersCache);
 
   // Filter anwenden
   const shown = (ordersFilter==="all")
