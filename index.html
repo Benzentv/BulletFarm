@@ -333,7 +333,6 @@ function renderProducts(){
     const div = document.createElement("div");
     div.className = "prod";
     const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
-const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
 div.innerHTML = `
   ${img ? `
     <div class="previewBox" style="margin-bottom:10px">
@@ -346,7 +345,6 @@ div.innerHTML = `
   <div style="height:8px"></div>
   <button class="primary" data-add="${p.id}">In den Warenkorb</button>
 `;
-
 
     list.appendChild(div);
   }
