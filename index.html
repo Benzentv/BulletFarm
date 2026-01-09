@@ -574,7 +574,7 @@ function renderCartSummary(totals){
 
   if(!totals || totals.size===0){
     box.innerHTML = `
-      <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
+      <div class="cartSummaryTitle">Du bezahlst insgesamt:</div>
       <div class="muted">— keine Ressourcen —</div>
     `;
     return;
@@ -584,7 +584,7 @@ function renderCartSummary(totals){
   ).join(" ");
 
   box.innerHTML = `
-    <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
+    <div class="cartSummaryTitle">Du bezahlst insgesamt:</div>
     <div class="cartSummaryBig">${chips}</div>
   `;
 }
