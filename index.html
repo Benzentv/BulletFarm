@@ -99,6 +99,26 @@
     th,td{border-bottom:1px solid var(--border); padding:10px 8px; vertical-align:top}
     th{color:var(--muted); text-align:left}
     .count{display:inline-block; min-width:22px; text-align:center; padding:2px 7px; border-radius:999px; border:1px solid var(--border); color:var(--muted)}
+    .chips{display:flex; gap:6px; flex-wrap:wrap; margin-top:8px}
+.chip{
+  display:inline-flex; align-items:center; gap:6px;
+  font-size:12px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.03);
+  padding:6px 10px;
+  border-radius:999px;
+}
+.dot{width:10px; height:10px; border-radius:999px; display:inline-block}
+.previewBox{
+  width:100%;
+  aspect-ratio:16/9;
+  border:1px solid var(--border);
+  border-radius:12px;
+  overflow:hidden;
+  background: rgba(255,255,255,.03);
+}
+.previewBox img{width:100%; height:100%; object-fit:cover; display:block}
+
     /* modal */
     .modalBg{
       position:fixed; inset:0;
