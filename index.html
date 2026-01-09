@@ -960,24 +960,33 @@ function renderAdminTheme(){
   document.getElementById("tReset").onclick = ()=>loadPublic();
 
   document.getElementById("tSave").onclick = async ()=>{
-    applyPreview();
-    const data = {
-      title: (document.getElementById("tTitle").value||"").trim() || "BulletFarm",
-      colors: {
-        bg: document.getElementById("tBg").value,
-        card: document.getElementById("tCard").value,
-        text: document.getElementById("tText").value,
-        muted: document.getElementById("tMuted").value,
-        primary: document.getElementById("tPrimary").value,
-        success: document.getElementById("tSuccess").value,
-        danger: document.getElementById("tDanger").value,
-      }
-    };
-    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
-    if(r.error){ console.error(r.error); alert("Theme speichern fehlgeschlagen (RLS?)"); return; }
-    alert("✅ Theme gespeichert.");
+  applyPreview();
+
+  // ✅ Erst aktuelle Settings laden und dann mergen (damit notify bleibt)
+  const cur = await sb.from("shop_settings").select("data").eq("id", 1).maybeSingle();
+  const base = cur.data?.data || {};
+
+  const merged = {
+    ...base,
+    title: (document.getElementById("tTitle").value||"").trim() || "BulletFarm",
+    colors: {
+      ...(base.colors || {}),
+      bg: document.getElementById("tBg").value,
+      card: document.getElementById("tCard").value,
+      text: document.getElementById("tText").value,
+      muted: document.getElementById("tMuted").value,
+      primary: document.getElementById("tPrimary").value,
+      success: document.getElementById("tSuccess").value,
+      danger: document.getElementById("tDanger").value,
+    }
   };
-}
+
+  const r = await sb.from("shop_settings").update({ data: merged }).eq("id", 1);
+  if(r.error){ console.error(r.error); alert("Theme speichern fehlgeschlagen (RLS?)"); return; }
+
+  alert("✅ Theme gespeichert.");
+};
+
 
 
 /* ========= Admin: Orders (list + Status ändern) ========= */
