@@ -324,6 +324,32 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 let sb = null;
 
+
+
+/* ========= Discord Status Notify (global) ========= */
+window.notifyOrderStatusChange = async function (orderId, newStatus) {
+  const n = window.__shopSettings?.notify;
+  if (!n?.enabled || !n?.edgeFunctionUrl) return;
+
+  const r = await fetch(n.edgeFunctionUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + SUPABASE_ANON_KEY
+    },
+    body: JSON.stringify({
+      type: "status_update",
+      order_id: orderId,
+      status: newStatus
+    })
+  });
+
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    throw new Error(`Edge function failed: ${r.status} ${t}`);
+  }
+};
+
 /* ========= State ========= */
 let categories = [];
 let products = [];
@@ -1644,7 +1670,7 @@ async function loadOrders(){
     
     // ✅ Discord informieren
 try {
-  await notifyOrderStatusChange(id, status);
+  await window.notifyOrderStatusChange(id, status);
 } catch (err) {
   console.warn("Discord notify failed", err);
 }
