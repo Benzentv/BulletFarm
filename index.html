@@ -264,6 +264,84 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
   .tabs{ justify-content:center; }
 }
 
+
+/* === Marketing UI: Promo Banner + Recent Purchases Ticker + Badges + Mini Cart Bar === */
+.promoBar{
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.04);
+  border-radius: 14px;
+  padding:10px 12px;
+  margin: 0 0 12px 0;
+  display:none;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.promoBar b{ color: var(--primary); }
+.promoSmall{ color: var(--muted); font-size:12px; }
+
+.ticker{
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.03);
+  border-radius: 14px;
+  padding:10px 12px;
+  margin-bottom:12px;
+  display:none;
+  overflow:hidden;
+}
+.tickerRow{
+  display:flex;
+  gap:10px;
+  align-items:center;
+  white-space:nowrap;
+  overflow:hidden;
+}
+.tickerDot{
+  width:8px;height:8px;border-radius:999px;background:var(--success);flex:0 0 auto;
+}
+.tickerText{
+  display:inline-block;
+  animation: tickerScroll 18s linear infinite;
+}
+@keyframes tickerScroll{
+  from{ transform: translateX(0); }
+  to{ transform: translateX(-50%); }
+}
+
+.badges{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+.badge{
+  font-size:11px;
+  font-weight:900;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,.04);
+  border-radius:999px;
+  padding:4px 9px;
+}
+.badge.best{ border-color: rgba(52,211,153,.55); background: rgba(52,211,153,.10); }
+.badge.hot{ border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10); }
+.badge.fast{ border-color: rgba(125,211,252,.55); background: rgba(125,211,252,.10); }
+
+.miniCartBar{
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: 14px;
+  z-index: 50;
+  display:none;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  border:1px solid var(--border);
+  background: rgba(17,24,38,.92);
+  border-radius: 14px;
+  padding:10px 12px;
+  backdrop-filter: blur(8px);
+}
+.miniCartBar .left{ min-width:0; }
+.miniCartBar .title{ font-weight:1000; }
+.miniCartBar .sub{ font-size:12px; color: var(--muted); margin-top:2px; }
+.miniCartBar button{ white-space:nowrap; }
+
 </style>
 </head>
 <body>
@@ -289,7 +367,13 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
 <main>
   <div class="banner" id="banner"></div>
 
-  <div class="grid">
+  
+  
+  <div class="promoBar" id="promoBar"></div>
+  <div class="ticker" id="recentTicker"></div>
+<div class="promoBar" id="promoBar"></div>
+  <div class="ticker" id="recentTicker"></div>
+<div class="grid">
     <!-- SHOP -->
     <section class="card" id="shopCard">
       <div class="head">
@@ -394,6 +478,209 @@ function showBanner(msg){
 }
 
 
+
+
+
+/* ========= Marketing / UX Features ========= */
+function getMarketingSettings(){
+  const s = window.__shopSettings || {};
+  const m = s.marketing || {};
+  return {
+    deliveryText: (m.deliveryText || "sofort").trim(),
+    promoText: (m.promoText || "").trim(),
+    promoUntil: (m.promoUntil || "").trim(),
+    promoEnabled: !!m.promoEnabled,
+  };
+}
+function withinPromoWindow(){
+  const m = getMarketingSettings();
+  if(!m.promoEnabled || !m.promoText) return false;
+  if(!m.promoUntil) return true;
+  const until = new Date(m.promoUntil);
+  if(String(until) === "Invalid Date") return true;
+  return Date.now() <= until.getTime();
+}
+function renderPromo(){
+  const bar = document.getElementById("promoBar");
+  if(!bar) return;
+  if(!withinPromoWindow()){
+    bar.style.display = "none";
+    return;
+  }
+  const m = getMarketingSettings();
+  const untilTxt = m.promoUntil ? `bis ${new Date(m.promoUntil).toLocaleString("de-DE")}` : "";
+  bar.innerHTML = `
+    <div>
+      <b>⏰ Aktion</b> — ${escapeHtml(m.promoText)}
+      <div class="promoSmall">${escapeHtml(untilTxt)}</div>
+    </div>
+    <button class="primary" onclick="setTab('cart')">Zum Warenkorb</button>
+  `;
+  bar.style.display = "flex";
+}
+
+/* Recent purchases ticker (lokal pro Gerät) */
+function pushRecentPurchase(itemText){
+  try{
+    const key = "bf_recent_purchases";
+    const arr = JSON.parse(localStorage.getItem(key) || "[]");
+    const now = Date.now();
+    arr.unshift({ t: now, text: String(itemText||"").slice(0,120) });
+    const trimmed = arr.filter(x=>x && x.t && x.text).slice(0, 10);
+    localStorage.setItem(key, JSON.stringify(trimmed));
+  }catch(e){}
+}
+function renderRecentTicker(){
+  const el = document.getElementById("recentTicker");
+  if(!el) return;
+  let arr = [];
+  try{ arr = JSON.parse(localStorage.getItem("bf_recent_purchases") || "[]"); }catch(e){ arr=[]; }
+  arr = (Array.isArray(arr) ? arr : []).filter(x=>x && x.text);
+  if(arr.length === 0){ el.style.display = "none"; return; }
+
+  const parts = arr.map(x=>{
+    const mins = Math.max(1, Math.floor((Date.now() - Number(x.t||Date.now()))/60000));
+    const ago = mins < 60 ? `vor ${mins} Min` : `vor ${Math.floor(mins/60)} Std`;
+    return `🟢 ${escapeHtml(ago)}: ${escapeHtml(x.text)}`;
+  });
+
+  const line = parts.join("  •  ");
+  el.innerHTML = `
+    <div class="tickerRow">
+      <span class="tickerDot"></span>
+      <div style="min-width:0; overflow:hidden;">
+        <div class="tickerText">${line}  •  ${line}</div>
+      </div>
+    </div>
+  `;
+  el.style.display = "block";
+}
+
+/* Mini cart bar */
+function computeCartTotals(){
+  const totals = new Map();
+  for(const item of cart){
+    const p = products.find(x=>x.id===item.productId);
+    if(!p) continue;
+    const qty = Number(item.qty)||1;
+    const mult = Number(item.variantMultiplier)||1;
+    (p.resources||[]).forEach(r=>{
+      const name = String(r.name||"").trim();
+      if(!name) return;
+      const amount = (Number(r.amount)||0) * qty * mult;
+      const prev = totals.get(name) || { amount: 0, color: r.color || "#fff" };
+      prev.amount += amount;
+      if(r.color) prev.color = r.color;
+      totals.set(name, prev);
+    });
+  }
+  return totals;
+}
+function getTopResourceName(totals){
+  if(!totals || totals.size===0) return null;
+  const preferred = ["Deadcoins", "Waffenteile", "Eisen", "Plastik", "Wolfram"];
+  for(const p of preferred){
+    if(totals.has(p)) return p;
+  }
+  let best = null;
+  totals.forEach((v,k)=>{
+    if(!best || (v.amount||0) > (best.amount||0)) best = { name:k, amount:v.amount };
+  });
+  return best ? best.name : null;
+}
+function renderMiniCartBar(){
+  const bar = document.getElementById("miniCartBar");
+  const sub = document.getElementById("miniCartSub");
+  if(!bar || !sub) return;
+
+  const count = cart.reduce((s,x)=>s + (Number(x.qty)||0), 0);
+  if(count <= 0){ bar.style.display = "none"; return; }
+
+  const totals = computeCartTotals();
+  const topName = getTopResourceName(totals);
+  const top = topName ? totals.get(topName) : null;
+  const topText = (topName && top) ? `${topName}: ${formatDEInt(top.amount)}` : "—";
+  sub.textContent = `${count} Artikel • ${topText}`;
+
+  const currentTabIsCart = document.getElementById("cartCard")?.style.display !== "none";
+  bar.style.display = currentTabIsCart ? "none" : "flex";
+}
+document.addEventListener("click", (e)=>{
+  if(e.target && e.target.id === "miniCartBtn"){ setTab("cart"); }
+});
+
+/* Bundle hint heuristic */
+function calcBundleHintHTML(){
+  if(!products || products.length===0) return "";
+  if(!cart || cart.length<2) return "";
+  const totals = computeCartTotals();
+  const topName = getTopResourceName(totals);
+  if(!topName) return "";
+  const currentAmt = Math.round(Number(totals.get(topName)?.amount)||0);
+  if(currentAmt <= 0) return "";
+
+  let best = null;
+  for(const p of products){
+    const r = (p.resources||[]).find(x=>String(x.name||"").trim().toLowerCase() === String(topName).toLowerCase());
+    if(!r) continue;
+    const amt = Math.round(Number(r.amount)||0);
+    if(!best || amt > best.amt) best = { id:p.id, name:p.name, amt };
+  }
+  if(!best || best.amt <= currentAmt) return "";
+  const bonusPct = Math.round(((best.amt - currentAmt) / currentAmt) * 100);
+  const pctText = (bonusPct>0 && Number.isFinite(bonusPct)) ? ` (+${bonusPct}% ${escapeHtml(topName)})` : "";
+  return `
+    <div style="margin-top:10px; border:1px dashed rgba(125,211,252,.45); border-radius:14px; padding:10px 12px; background: rgba(125,211,252,.06)">
+      <b>💡 Bundle-Tipp:</b> <span class="muted">Dieses Bundle spart</span>
+      <div style="margin-top:6px">
+        Wenn du ${escapeHtml(topName)} maximieren willst: <b>${escapeHtml(best.name)}</b> bringt mehr als dein aktueller Warenkorb${pctText}.
+      </div>
+    </div>
+  `;
+}
+
+/* Badges */
+function getProductClicks(id){
+  try{ return Number(localStorage.getItem("bf_clicks_"+id) || "0") || 0; }catch(e){ return 0; }
+}
+function incProductClicks(id){
+  try{
+    const k="bf_clicks_"+id;
+    localStorage.setItem(k, String(getProductClicks(id)+1));
+  }catch(e){}
+}
+function computeBestValueThreshold(){
+  const vals = [];
+  for(const p of products||[]){
+    const dc = (p.resources||[]).find(r=>String(r.name||"").toLowerCase()==="deadcoins");
+    const v = dc ? Number(dc.amount)||0 : 0;
+    if(v>0) vals.push(v);
+  }
+  if(vals.length<5) return 0;
+  vals.sort((a,b)=>a-b);
+  return vals[Math.floor(vals.length*0.75)] || 0;
+}
+
+/* Status automation wrapper */
+async function updateOrderStatusWithMeta(orderId, status){
+  let reason = "";
+  if(status === "storniert"){
+    reason = prompt("Grund für Storno (optional):", "") || "";
+  }else if(status === "archiviert"){
+    reason = prompt("Notiz fürs Archiv (optional):", "") || "";
+  }
+  const u = await sb.from("orders").update({ status }).eq("id", orderId).select().maybeSingle();
+  if(u.error) throw u.error;
+  try{
+    const sess = await sb.auth.getSession();
+    const who = sess.data?.session?.user?.email || "admin";
+    const meta = { by: who, at: new Date().toISOString(), reason: reason.trim() || null };
+    if(typeof window.notifyOrderStatusChange === "function"){
+      await window.notifyOrderStatusChange(orderId, status, meta);
+    }
+  }catch(e){ console.warn("status automation notify failed", e); }
+  return u.data;
+}
 
 // Brand animation on first paint
 requestAnimationFrame(()=>{
@@ -553,6 +840,8 @@ function renderProducts(){
         </select>
       ` : ``}
 
+      <div class="badges" id="badges_${p.id}"></div>
+      <div class="muted" style="font-size:12px; margin-top:6px">📦 Lieferung: <span>${escapeHtml(getMarketingSettings().deliveryText)}</span></div>
       <div class="chips">${fmtRes(p.resources || [])}</div>
       <div style="height:8px"></div>
       <button class="primary" data-add="${p.id}">In den Warenkorb</button>
@@ -568,8 +857,10 @@ function renderProducts(){
         const opt = sel.options[sel.selectedIndex];
         const variantName = opt?.getAttribute("data-n") || opt?.textContent || "Standard";
         const variantMultiplier = Number(opt?.getAttribute("data-m") || "1") || 1;
+        incProductClicks(pid);
         addToCart(pid, variantName, variantMultiplier);
       }else{
+        incProductClicks(pid);
         addToCart(pid, "Standard", 1);
       }
     };
@@ -679,6 +970,7 @@ function pulseQty(key){
   });
 
   renderCartSummary(totals);
+  renderMiniCartBar();
 }
 
 function renderCartSummary(totals){
@@ -726,7 +1018,9 @@ function renderCartSummary(totals){
     <div class="cartSummaryBig">${chips}</div>
   `;
 
-  // Animation bei Zahlenänderung
+  
+  box.innerHTML += calcBundleHintHTML();
+// Animation bei Zahlenänderung
   const next = {};
   entries.forEach(([name,v])=>{
     const key = String(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");
@@ -769,7 +1063,10 @@ async function loadPublic(){
     const data = s.data?.data || {};
     window.__shopSettings = data;
 
-    if(data.title){
+    
+    renderPromo();
+    renderRecentTicker();
+if(data.title){
       document.getElementById("brandTitle").textContent = data.title;
     }
 
@@ -874,6 +1171,8 @@ document.getElementById("btnCheckout").onclick = async ()=>{
   cart = [];
   saveCart();
   renderCart();
+  pushRecentPurchase(`${items.reduce((s,it)=>s+(it.qty||0),0)} Artikel gekauft`);
+  renderRecentTicker();
   alert("✅ Bestellung gespeichert!");
   setTab("shop");
 };
@@ -1158,6 +1457,11 @@ function renderAdminProducts(){
           <div class="muted" style="font-size:12px; margin-top:4px">name / amount / color</div>
 
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+            <button id="presetDeadcoins" type="button">Preset: Deadcoins</button>
+            <button id="presetWaffen" type="button">Preset: Waffen</button>
+            <button id="presetClearRes" type="button" class="danger">Preset löschen</button>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
             <input id="rName" placeholder="Name" style="flex:1; min-width:160px" />
             <input id="rAmt" type="text" inputmode="numeric" placeholder="Anzahl (z.B. 5000 oder 5.000)" style="width:220px" />
             <input id="rColor" type="color" value="#7dd3fc" style="width:70px; padding:6px" />
@@ -1247,7 +1551,21 @@ function setupEditor(st){
     rAmtEl.addEventListener("blur", ()=>{
       const n = parseAmountDE(rAmtEl.value);
       if(n != null) rAmtEl.value = formatDEInt(n);
-    });
+    }
+  const presetDead = document.getElementById("presetDeadcoins");
+  if(presetDead) presetDead.onclick = ()=>{
+    st.setResources([{ name:"Deadcoins", amount: 100000, color: "#7dd3fc" }]);
+  };
+  const presetW = document.getElementById("presetWaffen");
+  if(presetW) presetW.onclick = ()=>{
+    st.setResources([
+      { name:"Waffenteile", amount: 2500, color: "#34d399" },
+      { name:"Eisen", amount: 5000, color: "#9aa6b2" },
+    ]);
+  };
+  const presetClear = document.getElementById("presetClearRes");
+  if(presetClear) presetClear.onclick = ()=>st.setResources([]);
+);
   }
 
   // Ressourcen hinzufügen
@@ -1492,6 +1810,33 @@ function renderAdminTheme(){
           <label class="muted">Position links (px) <input id="tBrandLeft" type="number" min="0" max="300" step="1" style="width:100%;height:44px;padding:10px" /></label>
         </div>
 
+        
+        <div style="height:12px"></div>
+
+        <div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
+          <b>Marketing</b>
+          <div class="muted" style="font-size:12px; margin-top:4px">Aktion-Banner + Lieferzeit (optional)</div>
+          <div style="height:10px"></div>
+          <label class="muted">Lieferzeit Text (z.B. sofort / 5-10 Min)
+            <input id="mDeliveryText" placeholder="sofort" style="width:100%" />
+          </label>
+          <div style="height:10px"></div>
+          <label class="muted">Aktion aktiv?
+            <select id="mPromoEnabled" style="width:100%">
+              <option value="0">Aus</option>
+              <option value="1">An</option>
+            </select>
+          </label>
+          <div style="height:10px"></div>
+          <label class="muted">Aktion Text
+            <input id="mPromoText" placeholder="z.B. 10% Bonus bis heute" style="width:100%" />
+          </label>
+          <div style="height:10px"></div>
+          <label class="muted">Aktion bis (optional, ISO) z.B. 2026-01-31T23:59:00
+            <input id="mPromoUntil" placeholder="" style="width:100%" />
+          </label>
+        </div>
+
         <div style="height:12px"></div>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
@@ -1542,7 +1887,18 @@ function renderAdminTheme(){
   const subCol = document.getElementById("tSubtitleColor");
   if(subCol) subCol.value = cur.subtitleColor || "#7dd3fc";
 
-  // Brand position defaults
+  
+  const base = window.__shopSettings || {};
+  const mkt = base.marketing || {};
+  const mDel = document.getElementById("mDeliveryText");
+  if(mDel) mDel.value = (mkt.deliveryText || "sofort");
+  const mEn = document.getElementById("mPromoEnabled");
+  if(mEn) mEn.value = (mkt.promoEnabled ? "1" : "0");
+  const mTxt = document.getElementById("mPromoText");
+  if(mTxt) mTxt.value = (mkt.promoText || "");
+  const mUntil = document.getElementById("mPromoUntil");
+  if(mUntil) mUntil.value = (mkt.promoUntil || "");
+// Brand position defaults
   // Brand size defaults
   const tSz = document.getElementById("tBrandTitleSize");
   if(tSz) tSz.value = String(cur.brandTitleSize ?? 18);
@@ -1595,6 +1951,13 @@ function renderAdminTheme(){
       brandLeft: parseInt(document.getElementById("tBrandLeft")?.value || "16") || 16,
       brandTitleSize: parseInt(document.getElementById("tBrandTitleSize")?.value || "18") || 18,
       brandSubtitleSize: parseInt(document.getElementById("tBrandSubtitleSize")?.value || "11") || 11,
+      marketing: {
+        ...(base.marketing || {}),
+        deliveryText: (document.getElementById('mDeliveryText')?.value || 'sofort').trim() || 'sofort',
+        promoEnabled: document.getElementById('mPromoEnabled')?.value === '1',
+        promoText: (document.getElementById('mPromoText')?.value || '').trim(),
+        promoUntil: (document.getElementById('mPromoUntil')?.value || '').trim(),
+      },
       colors: {
         ...(base.colors || {}),
         bg: document.getElementById("tBg").value,
@@ -1922,15 +2285,9 @@ async function loadOrders(){
     e.stopPropagation();
     const id = b.getAttribute("data-id");
     const status = b.getAttribute("data-st");
-    const u = await sb.from("orders").update({ status }).eq("id", id).select();
-    if(u.error){ console.error(u.error); alert("Status speichern fehlgeschlagen (RLS?)"); return; }
-    
-    // ✅ Discord informieren
-try {
-  await notifyOrderStatusChange(id, status);
-} catch (err) {
-  console.warn("Discord notify failed", err);
-}
+    try{
+    await updateOrderStatusWithMeta(id, status);
+  }catch(err){ console.error(err); alert('Status speichern fehlgeschlagen (RLS?)'); return; }
 
     await loadOrders();
   });
@@ -2022,6 +2379,15 @@ window.addEventListener("DOMContentLoaded", async ()=>{
   await loadPublic();
 });
 </script>
+
+
+<div class="miniCartBar" id="miniCartBar">
+  <div class="left">
+    <div class="title">🛒 Warenkorb bereit</div>
+    <div class="sub" id="miniCartSub">—</div>
+  </div>
+  <button class="primary" id="miniCartBtn">Zum Warenkorb</button>
+</div>
 
 </body>
 </html>
