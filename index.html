@@ -116,63 +116,8 @@
   border-radius:12px;
   overflow:hidden;
   background: rgba(255,255,255,.03);
-  position: relative;
-}
-.favOverlay{
-  position:absolute;
-  top:8px;
-  right:8px;
-  z-index:2;
-  padding:6px 10px;
-  backdrop-filter: blur(6px);
 }
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
-
-/* === UX Upgrades: Cart Sticky Summary + Animations + Favorites === */
-.favBtn{
-  border:1px solid var(--border);
-  background: rgba(255,255,255,.04);
-  color: var(--text);
-  border-radius:999px;
-  padding:6px 10px;
-  cursor:pointer;
-  font-weight:900;
-}
-.favBtn.active{
-  border-color: rgba(251,191,36,.65);
-  box-shadow: 0 0 0 3px rgba(251,191,36,.10) inset;
-}
-.cartSummary{
-  position: sticky;
-  bottom: 0;
-  margin-top: 12px;
-  border:1px solid var(--border);
-  background: rgba(17,24,38,.92);
-  border-radius: 14px;
-  padding:12px;
-  backdrop-filter: blur(8px);
-}
-.cartSummaryTitle{
-  font-weight:900;
-  font-size:14px;
-  margin-bottom:8px;
-  color: var(--primary);
-}
-.cartSummaryBig{
-  font-weight:1000;
-  font-size:16px;
-  color: var(--primary);
-  letter-spacing:.2px;
-}
-.pulse{
-  animation: pulseScale .18s ease-in-out;
-}
-@keyframes pulseScale{
-  from{ transform: scale(1); }
-  50%{ transform: scale(1.06); }
-  to{ transform: scale(1); }
-}
-
 
     /* modal */
     .modalBg{
@@ -205,7 +150,6 @@
   <div class="brand" id="brandTitle">BulletFarm</div>
   <div class="tabs">
     <div class="pill active" id="tabShop">Shop</div>
-    <div class="pill" id="tabFav">⭐ Favoriten</div>
     <div class="pill" id="tabCart">Warenkorb <span class="count" id="cartCount">0</span></div>
     <div class="pill" id="tabAdmin">⚙️ Admin</div>
   </div>
@@ -218,7 +162,7 @@
     <!-- SHOP -->
     <section class="card" id="shopCard">
       <div class="head">
-        <b id="shopHeading">Produkte</b>
+        <b>Produkte</b>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <select id="catFilter"></select>
           <input id="searchBox" placeholder="Suchen…" />
@@ -246,8 +190,6 @@
             <tbody id="cartRows"></tbody>
           </table>
         </div>
-        <div style="height:10px"></div>
-        <div id="cartSummary" class="cartSummary"></div>
         <div style="height:10px"></div>
         <input id="custName" placeholder="Name (optional)" />
         <div style="height:8px"></div>
@@ -328,49 +270,24 @@ let sb = null;
 let categories = [];
 let products = [];
 let cart = JSON.parse(localStorage.getItem("bf_cart") || "[]");
-let favs = new Set(JSON.parse(localStorage.getItem("bf_favs") || "[]"));
-// Migration: alte Cart-Einträge ohne Varianten/Key
-cart = (Array.isArray(cart) ? cart : []).map(it=>{
-  const productId = it.productId;
-  const variantName = it.variantName || "Standard";
-  const variantMultiplier = Number(it.variantMultiplier||1) || 1;
-  const key = it.key || (productId + "||" + variantName + "||" + variantMultiplier);
-  return { key, productId, variantName, variantMultiplier, qty: Number(it.qty||1)||1 };
-});
 
 function saveCart(){
   localStorage.setItem("bf_cart", JSON.stringify(cart));
   document.getElementById("cartCount").textContent = String(cart.reduce((s,x)=>s + x.qty, 0));
 }
-function saveFavs(){
-  localStorage.setItem("bf_favs", JSON.stringify(Array.from(favs)));
-}
-function isFav(id){ return favs.has(id); }
-function toggleFav(id){
-  if(favs.has(id)) favs.delete(id); else favs.add(id);
-  saveFavs();
-  renderProducts();
-}
 
 /* ========= Tabs (stabil, ohne Abhängigkeiten) ========= */
 function setTab(t){
   document.getElementById("tabShop").classList.toggle("active", t==="shop");
-  document.getElementById("tabFav").classList.toggle("active", t==="fav");
   document.getElementById("tabCart").classList.toggle("active", t==="cart");
   document.getElementById("tabAdmin").classList.toggle("active", t==="admin");
 
-  // Shop/Favoriten nutzen dieselbe Karte, aber andere Ansicht
-  document.getElementById("shopCard").style.display = (t==="shop" || t==="fav") ? "" : "none";
+  document.getElementById("shopCard").style.display = (t==="shop") ? "" : "none";
   document.getElementById("cartCard").style.display = (t==="cart") ? "" : "none";
   document.getElementById("adminCard").style.display = (t==="admin") ? "" : "none";
-
-  window.__shopMode = (t==="fav") ? "fav" : "shop";
-  // neu rendern, damit Favoriten-Filter greift
-  if(typeof renderProducts === "function") renderProducts();
 }
 
 document.getElementById("tabShop").onclick = ()=>setTab("shop");
-document.getElementById("tabFav").onclick = ()=>setTab("fav");
 document.getElementById("tabCart").onclick = ()=>setTab("cart");
 document.getElementById("tabAdmin").onclick = ()=>setTab("admin");
 
@@ -395,35 +312,20 @@ function renderFilter(){
   document.getElementById("searchBox").oninput = renderProducts;
 }
 
-
-function getVariants(p){
-  const v = p?.variants;
-  if(Array.isArray(v) && v.length){
-    return v.map(x=>({
-      name: String(x.name ?? "Variante").trim() || "Variante",
-      multiplier: Number(x.multiplier ?? 1) || 1
-    }));
-  }
-  return [{ name: "Standard", multiplier: 1 }];
-}
-
 function renderProducts(){
   const list = document.getElementById("productList");
   list.innerHTML = "";
-  const heading = document.getElementById("shopHeading");
-  if(heading) heading.textContent = (window.__shopMode==="fav") ? "⭐ Favoriten" : "Produkte";
 
   const filter = document.getElementById("catFilter").value;
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
 
   let shown = products.slice();
-  if(window.__shopMode==="fav"){ shown = shown.filter(p=>isFav(p.id)); }
   if(filter==="none") shown = shown.filter(p=>!p.category_id);
   else if(filter!=="all") shown = shown.filter(p=>p.category_id===filter);
   if(q) shown = shown.filter(p=>String(p.name||"").toLowerCase().includes(q));
 
   if(shown.length===0){
-    list.innerHTML = `<div class="muted">${window.__shopMode==="fav" ? "Noch keine Favoriten. Tippe ☆ um Produkte zu merken." : "Keine Produkte gefunden."}</div>`;
+    list.innerHTML = `<div class="muted">Keine Produkte gefunden.</div>`;
     return;
   }
 
@@ -431,68 +333,30 @@ function renderProducts(){
     const div = document.createElement("div");
     div.className = "prod";
     const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
-    const variants = getVariants(p);
-    const favActive = isFav(p.id);
-    const variantOptions = variants.map((v,idx)=>
-      `<option value="${idx}" data-m="${v.multiplier}" data-n="${escapeHtml(v.name)}">${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`
-    ).join("");
-
-    div.innerHTML = `
-      ${img ? `
-        <div class="previewBox" style="margin-bottom:10px">
-          <button class="favBtn favOverlay ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">${favActive ? "★" : "☆"}</button>
-          <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
-        </div>
-      ` : ``}
-
-      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
-        <div style="min-width:0">
-          <b>${escapeHtml(p.name)}</b>
-          <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
-        </div>
-        <button class="favBtn ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">
-          ${favActive ? "★" : "☆"}
-        </button>
-      </div>
-
-      ${variants.length>1 ? `
-        <div style="height:8px"></div>
-        <select class="variantSel" data-vid="${p.id}" style="width:100%">
-          ${variantOptions}
-        </select>
-      ` : ``}
-
-      <div class="chips">${fmtRes(p.resources || [])}</div>
-      <div style="height:8px"></div>
-      <button class="primary" data-add="${p.id}">In den Warenkorb</button>
-    `;
+div.innerHTML = `
+  ${img ? `
+    <div class="previewBox" style="margin-bottom:10px">
+      <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
+    </div>
+  ` : ``}
+  <b>${p.name}</b>
+  <div class="muted" style="font-size:12px; margin-top:4px">${p.category_id || "—"}</div>
+  <div class="chips">${fmtRes(p.resources || [])}</div>
+  <div style="height:8px"></div>
+  <button class="primary" data-add="${p.id}">In den Warenkorb</button>
+`;
 
     list.appendChild(div);
   }
   list.querySelectorAll("[data-add]").forEach(b=>{
-    b.onclick = ()=>{
-      const pid = b.getAttribute("data-add");
-      const sel = list.querySelector(`.variantSel[data-vid="${pid}"]`);
-      if(sel){
-        const opt = sel.options[sel.selectedIndex];
-        const variantName = opt?.getAttribute("data-n") || opt?.textContent || "Standard";
-        const variantMultiplier = Number(opt?.getAttribute("data-m") || "1") || 1;
-        addToCart(pid, variantName, variantMultiplier);
-      }else{
-        addToCart(pid, "Standard", 1);
-      }
-    };
-  });
-  list.querySelectorAll("[data-fav]").forEach(b=>{
-    b.onclick = ()=>toggleFav(b.getAttribute("data-fav"));
+    b.onclick = ()=>addToCart(b.getAttribute("data-add"));
   });
 }
 
-function addToCart(productId, variantName="Standard", variantMultiplier=1){
-  const key = productId + "||" + String(variantName||"Standard") + "||" + String(variantMultiplier||1);
-  const it = cart.find(x=>x.key===key);
+function addToCart(productId){
+  const it = cart.find(x=>x.productId===productId);
   if(it) it.qty += 1;
-  else cart.push({ key, productId, variantName, variantMultiplier, qty: 1 });
+  else cart.push({ productId, qty: 1 });
   saveCart();
   renderCart();
 }
@@ -501,116 +365,41 @@ function renderCart(){
   saveCart();
   const tb = document.getElementById("cartRows");
   tb.innerHTML = "";
-
-  // Totals (Ressourcen)
-  const totals = new Map(); // name -> {amount,color}
-  function addTotals(resArr, qty, mult){
-    (resArr||[]).forEach(r=>{
-      const name = String(r.name||"").trim();
-      if(!name) return;
-      const amount = (Number(r.amount)||0) * qty * (Number(mult)||1);
-      const prev = totals.get(name) || { amount: 0, color: r.color || "#fff" };
-      prev.amount += amount;
-      if(r.color) prev.color = r.color;
-      totals.set(name, prev);
-    });
-  }
-
   if(cart.length===0){
     tb.innerHTML = `<tr><td colspan="3" class="muted">Warenkorb ist leer.</td></tr>`;
-    renderCartSummary(totals);
     return;
   }
-
   for(const item of cart){
     const p = products.find(x=>x.id===item.productId);
     const name = p ? p.name : "(Produkt fehlt)";
-    const variantLabel = item.variantName && item.variantName!=="Standard" ? ` • <span class="muted">${escapeHtml(item.variantName)}</span>` : "";
-    const multLabel = (Number(item.variantMultiplier)||1) !== 1 ? ` <span class="muted">(×${Number(item.variantMultiplier)||1})</span>` : "";
-
-    if(p) addTotals(p.resources||[], item.qty, item.variantMultiplier);
-
     const tr = document.createElement("tr");
     tr.innerHTML = `
+      <td><b>${name}</b></td>
+      <td>${item.qty}</td>
       <td>
-        ${p ? `<button class="favBtn ${isFav(p.id) ? "active" : ""}" data-fav="${p.id}" title="Merken" style="padding:4px 8px; margin-right:6px">${isFav(p.id) ? "★" : "☆"}</button>` : ``}
-        <b>${escapeHtml(name)}</b>${multLabel}
-        <div style="font-size:12px">${variantLabel}</div>
-      </td>
-      <td><span class="count" id="qty_${escapeHtml(item.key)}">${item.qty}</span></td>
-      <td>
-        <button data-inc="${escapeHtml(item.key)}">+</button>
-        <button data-dec="${escapeHtml(item.key)}">-</button>
-        <button class="danger" data-rem="${escapeHtml(item.key)}">X</button>
+        <button data-inc="${item.productId}">+</button>
+        <button data-dec="${item.productId}">-</button>
+        <button class="danger" data-rem="${item.productId}">X</button>
       </td>
     `;
     tb.appendChild(tr);
   }
-
-  
-
-// Favoriten-Buttons im Warenkorb
-tb.querySelectorAll("[data-fav]").forEach(b=>{
-  b.onclick = ()=>{
-    const pid = b.getAttribute("data-fav");
-    toggleFav(pid);
-    renderCart(); // Button-Status aktualisieren
-    renderProducts(); // Shop-Ansicht aktualisieren (falls offen)
-  };
-});
-function pulseQty(key){
-    const el = document.getElementById("qty_"+key);
-    if(!el) return;
-    el.classList.remove("pulse");
-    void el.offsetWidth; // restart animation
-    el.classList.add("pulse");
-    setTimeout(()=>el.classList.remove("pulse"), 250);
-  }
-
   tb.querySelectorAll("[data-inc]").forEach(b=>b.onclick=()=>{
-    const key = b.getAttribute("data-inc");
-    const it = cart.find(x=>x.key===key);
-    if(it){ it.qty++; saveCart(); renderCart(); pulseQty(key); }
+    const id = b.getAttribute("data-inc");
+    const it = cart.find(x=>x.productId===id);
+    if(it){ it.qty++; saveCart(); renderCart(); }
   });
   tb.querySelectorAll("[data-dec]").forEach(b=>b.onclick=()=>{
-    const key = b.getAttribute("data-dec");
-    const it = cart.find(x=>x.key===key);
-    if(it){
-      it.qty = Math.max(0, it.qty-1);
-      if(it.qty===0) cart = cart.filter(x=>x.key!==key);
-      saveCart(); renderCart(); pulseQty(key);
-    }
+    const id = b.getAttribute("data-dec");
+    const it = cart.find(x=>x.productId===id);
+    if(it){ it.qty=Math.max(0,it.qty-1); if(it.qty===0) cart=cart.filter(x=>x.productId!==id); saveCart(); renderCart(); }
   });
   tb.querySelectorAll("[data-rem]").forEach(b=>b.onclick=()=>{
-    const key = b.getAttribute("data-rem");
-    cart = cart.filter(x=>x.key!==key);
+    const id = b.getAttribute("data-rem");
+    cart = cart.filter(x=>x.productId!==id);
     saveCart(); renderCart();
   });
-
-  renderCartSummary(totals);
 }
-
-function renderCartSummary(totals){
-  const box = document.getElementById("cartSummary");
-  if(!box) return;
-
-  if(!totals || totals.size===0){
-    box.innerHTML = `
-      <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
-      <div class="muted">— keine Ressourcen —</div>
-    `;
-    return;
-  }
-  const chips = Array.from(totals.entries()).map(([name,v])=>
-    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${Math.round(v.amount)}</b></span>`
-  ).join(" ");
-
-  box.innerHTML = `
-    <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
-    <div class="cartSummaryBig">${chips}</div>
-  `;
-}
-
 
 document.getElementById("btnClearCart").onclick = ()=>{
   cart = [];
@@ -626,35 +415,36 @@ async function loadPublic(){
   }
   showBanner("Supabase verbunden ✅ — lade Daten…");
 
-  // Settings laden + cachen + Theme anwenden
-  try{
-    const s = await sb.from("shop_settings").select("data").eq("id",1).maybeSingle();
-    const data = s.data?.data || {};
-    window.__shopSettings = data;
+  // Settings (Theme + Title)
+try{
+  const s = await sb.from("shop_settings").select("data").eq("id",1).maybeSingle();
+  const data = s.data?.data;
 
-    if(data.title){
-      document.getElementById("brandTitle").textContent = data.title;
-    }
-
-    const c = data.colors || {};
-    const root = document.documentElement.style;
-    if(c.bg) root.setProperty("--bg", c.bg);
-    if(c.card) root.setProperty("--card", c.card);
-    if(c.text) root.setProperty("--text", c.text);
-    if(c.muted) root.setProperty("--muted", c.muted);
-    if(c.primary) root.setProperty("--primary", c.primary);
-    if(c.success) root.setProperty("--success", c.success);
-    if(c.danger) root.setProperty("--danger", c.danger);
-  }catch(e){
-    console.warn("settings load failed", e);
-    window.__shopSettings = {};
+  if(data?.title){
+    document.getElementById("brandTitle").textContent = data.title;
   }
 
-  const catRes = await sb.from("categories").select("*").order("created_at", {ascending:true});
-  categories = catRes.data || [];
+  // Theme anwenden (colors -> CSS Variablen)
+  const c = data?.colors || {};
+  const root = document.documentElement.style;
 
-  const prodRes = await sb.from("products").select("*").order("created_at", {ascending:false});
-  products = prodRes.data || [];
+  if(c.bg) root.setProperty("--bg", c.bg);
+  if(c.card) root.setProperty("--card", c.card);
+  if(c.text) root.setProperty("--text", c.text);
+  if(c.muted) root.setProperty("--muted", c.muted);
+  if(c.primary) root.setProperty("--primary", c.primary);
+  if(c.success) root.setProperty("--success", c.success);
+  if(c.danger) root.setProperty("--danger", c.danger);
+}catch(e){
+  console.warn("settings load failed", e);
+}
+
+
+  const c = await sb.from("categories").select("*").order("created_at", {ascending:true});
+  categories = c.data || [];
+
+  const p = await sb.from("products").select("*").order("created_at", {ascending:false});
+  products = p.data || [];
 
   renderFilter();
   renderProducts();
@@ -674,40 +464,15 @@ document.getElementById("btnCheckout").onclick = async ()=>{
 
   const items = cart.map(ci=>{
     const p = products.find(x=>x.id===ci.productId);
-    return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty, variantName: ci.variantName || "Standard", variantMultiplier: Number(ci.variantMultiplier||1)||1, resources: p?.resources || [] };
+    return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty };
   });
 
-  const ins = await sb
-    .from("orders")
-    .insert({ status:"offen", customer:{name,phone}, items })
-    .select("id")
-    .maybeSingle();
+  const ins = await sb.from("orders").insert({ status:"offen", customer:{name,phone}, items });
   if(ins.error){
     console.error(ins.error);
     alert("Bestellung fehlgeschlagen (RLS insert?)");
     return;
   }
-
-  // ✅ Notify über Supabase Edge Function (falls gespeichert)
-  try{
-    const n = window.__shopSettings?.notify;
-    if(n?.enabled && n?.edgeFunctionUrl){
-      await fetch(n.edgeFunctionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + SUPABASE_ANON_KEY
-        },
-        body: JSON.stringify({
-          order_id: ins.data?.id || null,
-          order: { status:"offen", customer:{name,phone}, items }
-        })
-      });
-    }
-  }catch(e){
-    console.warn("Notify failed", e);
-  }
-
   cart = [];
   saveCart();
   renderCart();
@@ -918,22 +683,6 @@ function renderAdminProducts(){
           <div id="resList" class="chips"></div>
         </div>
 
-<div style="height:12px"></div>
-
-<div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
-  <b>Varianten</b>
-  <div class="muted" style="font-size:12px; margin-top:4px">name / multiplier (wirkt auf Ressourcen)</div>
-
-  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
-    <input id="vName" placeholder="Variante (z.B. Small)" style="flex:1; min-width:160px" />
-    <input id="vMult" type="number" step="0.1" placeholder="Multiplier" value="1" style="width:140px" />
-    <button id="btnAddVar">Hinzufügen</button>
-  </div>
-
-  <div style="height:10px"></div>
-  <div id="varList" class="chips"></div>
-</div>
-
         <div style="height:12px"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <button class="success" id="btnSaveProd">${editProductId ? "✅ Speichern" : "✅ Hinzufügen"}</button>
@@ -973,14 +722,9 @@ function renderAdminProducts(){
 function getEditorState(){
   return {
     resources: [],
-    variants: [],
     setResources(newRes){
       this.resources = newRes;
       renderResChips(this);
-    },
-    setVariants(newVars){
-      this.variants = newVars;
-      renderVarChips(this);
     }
   };
 }
@@ -1005,24 +749,6 @@ function setupEditor(st){
     document.getElementById("rAmt").value="";
   };
 
-// Varianten hinzufügen
-document.getElementById("btnAddVar").onclick = ()=>{
-  const name = (document.getElementById("vName").value||"").trim() || "Variante";
-  const mult = Number(document.getElementById("vMult").value);
-  if(!Number.isFinite(mult) || mult<=0){
-    alert("Bitte einen positiven Multiplier eingeben.");
-    return;
-  }
-  st.setVariants([...(st.variants||[]), { name, multiplier: mult }]);
-  document.getElementById("vName").value="";
-  document.getElementById("vMult").value="1";
-};
-
-// Default: Standard-Variante, wenn leer
-if(!Array.isArray(st.variants) || st.variants.length===0){
-  st.setVariants([{ name:"Standard", multiplier: 1 }]);
-}
-
   // Speichern/Hinzufügen
   document.getElementById("btnSaveProd").onclick = async ()=>{
     const name = (document.getElementById("pName").value||"").trim();
@@ -1035,8 +761,7 @@ if(!Array.isArray(st.variants) || st.variants.length===0){
       name,
       category_id: (cat==="none") ? null : cat,
       image_url,
-      resources: st.resources || [],
-      variants: (st.variants || []).filter(v=>v && String(v.name||'').trim())
+      resources: st.resources || []
     };
 
     let r;
@@ -1068,7 +793,6 @@ if(!Array.isArray(st.variants) || st.variants.length===0){
 
   // initial chips
   renderResChips(st);
-  renderVarChips(st);
 }
 
 function fillEditorFromProduct(st, productId){
@@ -1082,7 +806,6 @@ function fillEditorFromProduct(st, productId){
     imgEl.value = "";
     updateImagePreview("");
     st.setResources([]);
-    st.setVariants([{ name:"Standard", multiplier: 1 }]);
     return;
   }
 
@@ -1094,7 +817,6 @@ function fillEditorFromProduct(st, productId){
   imgEl.value = p.image_url || "";
   updateImagePreview(p.image_url || "");
   st.setResources(Array.isArray(p.resources) ? p.resources : []);
-  st.setVariants(Array.isArray(p.variants) && p.variants.length ? p.variants : [{ name:"Standard", multiplier: 1 }]);
 }
 
 function updateImagePreview(url){
@@ -1132,32 +854,6 @@ function renderResChips(st){
     const next = (st.resources||[]).slice();
     next.splice(idx,1);
     st.setResources(next);
-  });
-}
-
-function renderVarChips(st){
-  const box = document.getElementById("varList");
-  if(!box) return;
-  const vars = st.variants || [];
-  if(vars.length===0){
-    box.innerHTML = `<span class="muted">Keine Varianten</span>`;
-    return;
-  }
-  box.innerHTML = vars.map((v,idx)=>
-    `<span class="chip">
-      <span class="dot" style="background:rgba(255,255,255,.35)"></span>
-      ${escapeHtml(v.name)} <span class="muted">(×${Number(v.multiplier)||1})</span>
-      <button data-vdel="${idx}" class="danger" style="padding:2px 8px; border-radius:999px; margin-left:6px">x</button>
-    </span>`
-  ).join("");
-
-  box.querySelectorAll("[data-vdel]").forEach(b=>b.onclick=()=>{
-    const idx = Number(b.getAttribute("data-vdel"));
-    const next = (st.variants||[]).slice();
-    next.splice(idx,1);
-    // nie komplett leer: Standard
-    if(next.length===0) next.push({ name:"Standard", multiplier: 1 });
-    st.setVariants(next);
   });
 }
 
@@ -1265,16 +961,9 @@ function renderAdminTheme(){
 
   document.getElementById("tSave").onclick = async ()=>{
     applyPreview();
-
-    // ✅ MERGE (damit notify erhalten bleibt)
-    const curRow = await sb.from("shop_settings").select("data").eq("id", 1).maybeSingle();
-    const base = curRow.data?.data || {};
-
-    const merged = {
-      ...base,
+    const data = {
       title: (document.getElementById("tTitle").value||"").trim() || "BulletFarm",
       colors: {
-        ...(base.colors || {}),
         bg: document.getElementById("tBg").value,
         card: document.getElementById("tCard").value,
         text: document.getElementById("tText").value,
@@ -1284,61 +973,46 @@ function renderAdminTheme(){
         danger: document.getElementById("tDanger").value,
       }
     };
-
-    const r = await sb.from("shop_settings").update({ data: merged }).eq("id", 1);
+    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
     if(r.error){ console.error(r.error); alert("Theme speichern fehlgeschlagen (RLS?)"); return; }
-
-    window.__shopSettings = merged;
     alert("✅ Theme gespeichert.");
   };
 }
 
 
-/* ========= Admin: Orders (Filter + Einklappen + Archivieren + Löschen) ========= */
+/* ========= Admin: Orders (list + Status ändern) ========= */
 let ordersCache = [];
-let ordersFilter = "all";
-let ordersExpanded = new Set();
 
-function updateOrdersDashboard(allOrders){
-  const el = document.getElementById("ordersDash");
-  if(!el) return;
-  const arr = Array.isArray(allOrders) ? allOrders : [];
-  const count = (s)=>arr.filter(o=>String(o.status||"offen")===s).length;
-  const offen = count("offen");
-  const erledigt = count("bearbeitet");
-  const storniert = count("storniert");
-  const archiv = count("archiviert");
-  el.innerHTML = `
-    <span style="padding:2px 8px; border:1px solid var(--border); border-radius:999px;">Offen: <b style="color:var(--primary)">${offen}</b></span>
-    <span style="padding:2px 8px; border:1px solid var(--border); border-radius:999px; margin-left:6px;">Erledigt: <b>${erledigt}</b></span>
-    <span style="padding:2px 8px; border:1px solid var(--border); border-radius:999px; margin-left:6px;">Storniert: <b>${storniert}</b></span>
-    <span style="padding:2px 8px; border:1px solid var(--border); border-radius:999px; margin-left:6px;">Archiv: <b>${archiv}</b></span>
-  `;
-}
-
-async function autoArchiveOldOrders(days=30){
+async function notifyOrderStatusChange(orderId, newStatus, orderData=null){
   try{
-    const ms = days * 24 * 60 * 60 * 1000;
-    const cutoff = new Date(Date.now() - ms).toISOString();
+    const n = window.__shopSettings?.notify;
+    if(!n?.enabled || !n?.edgeFunctionUrl) return;
 
-    // Nur wenn eingeloggt (Admin) – anon darf nicht updaten
-    const sess = await sb.auth.getSession();
-    if(!sess.data?.session) return { ran:false };
+    const payload = {
+      type: "status_update",
+      order_id: orderId,
+      status: newStatus
+    };
 
-    const u = await sb
-      .from("orders")
-      .update({ status: "archiviert" })
-      .lt("created_at", cutoff)
-      .neq("status", "archiviert");
-
-    if(u.error){
-      console.warn("autoArchive failed", u.error);
-      return { ran:true, updated:false };
+    // Optional: komplette Order mitsenden (Kunde + Items), damit Discord Details anzeigen kann
+    if(orderData){
+      payload.order = {
+        status: newStatus,
+        customer: orderData.customer || {},
+        items: orderData.items || []
+      };
     }
-    return { ran:true, updated:true };
+
+    await fetch(n.edgeFunctionUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify(payload)
+    });
   }catch(e){
-    console.warn("autoArchive exception", e);
-    return { ran:false };
+    console.warn("Status notify failed", e);
   }
 }
 
@@ -1347,194 +1021,23 @@ function renderAdminOrders(){
   const el = document.getElementById("panelOrders");
   el.innerHTML = `
     <div class="card" style="margin-top:10px">
-      <div class="head" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
+      <div class="head" style="justify-content:space-between">
         <b>Bestellungen</b>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-          <label class="muted" style="font-size:12px">Filter:</label>
-          <select id="orderFilter">
-            <option value="all">Alle</option>
-            <option value="offen">Offen</option>
-            <option value="bearbeitet">Erledigt</option>
-            <option value="storniert">Storniert</option>
-            <option value="archiviert">Archiv</option>
-          </select>
-          <div id="ordersDash" class="muted" style="font-size:12px; margin-right:6px"></div>
-          <button id="btnTestOrder" class="primary">Testbestellung</button>
-          <button id="btnTestOrderNotify" class="success">Test + Discord</button>
-          <button id="btnLoadOrders">Laden</button>
-        </div>
+        <button id="btnLoadOrders">Laden</button>
       </div>
       <div class="body" style="overflow:auto">
         <table>
-          <thead><tr><th>Zeit</th><th>Kunde</th><th>Status</th><th>Aktion</th></tr></thead>
+          <thead><tr><th>Zeit</th><th>ID</th><th>Status</th><th>Aktion</th></tr></thead>
           <tbody id="ordersTable"></tbody>
         </table>
-        <div class="muted" style="font-size:12px; margin-top:10px">
-          Tipp: Klick auf eine Bestellung zum Ein-/Ausklappen.
-        </div>
       </div>
     </div>
   `;
-
-  const sel = document.getElementById("orderFilter");
-  sel.value = ordersFilter;
-  sel.onchange = async ()=>{
-    ordersFilter = sel.value;
-    await loadOrders();
-  };
-
   document.getElementById("btnLoadOrders").onclick = loadOrders;
-  updateOrdersDashboard(ordersCache);
-  document.getElementById("btnTestOrder").onclick = createTestOrder;
-  document.getElementById("btnTestOrderNotify").onclick = createTestOrderAndNotify;
-}
-
-function orderResTotals(items){
-  const totals = new Map();
-  for(const it of (items||[])){
-    const qty = Number(it.qty||1) || 1;
-    const mult = Number(it.variantMultiplier||1) || 1;
-    for(const r of (it.resources||[])){
-      const name = String(r.name||"").trim();
-      if(!name) continue;
-      const amount = (Number(r.amount||0)||0) * qty * mult;
-      const prev = totals.get(name) || { amount:0, color: r.color || "#fff" };
-      prev.amount += amount;
-      if(r.color) prev.color = r.color;
-      totals.set(name, prev);
-    }
-  }
-  return totals;
-}
-
-function renderTotalsChips(totals){
-  const entries = Array.from(totals.entries()).sort((a,b)=>a[0].localeCompare(b[0]));
-  if(entries.length===0) return `<span class="muted">—</span>`;
-  return entries.map(([name,v]) =>
-    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${Math.round(v.amount)}</b></span>`
-  ).join(" ");
-}
-
-function renderOrderDetails(o){
-  const customer = o.customer || {};
-  const items = o.items || [];
-  const totals = orderResTotals(items);
-
-  const itemLines = (items.length ? items : []).map(it=>{
-    const v = it.variantName && it.variantName !== "Standard" ? ` <span class="muted">(${escapeHtml(it.variantName)})</span>` : "";
-    const mult = (Number(it.variantMultiplier||1) !== 1) ? ` <span class="muted">×${Number(it.variantMultiplier||1)}</span>` : "";
-    return `
-      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--border)">
-        <div><b>${escapeHtml(it.name||"Unbekannt")}</b>${v}${mult}</div>
-        <div class="muted">Menge: <b style="color:var(--text)">${Number(it.qty||1)||1}</b></div>
-      </div>
-    `;
-  }).join("");
-
-  return `
-    <div style="padding:10px 10px 12px; border:1px solid var(--border); border-radius:14px; background: rgba(255,255,255,.02)">
-      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap">
-        <div>
-          <div style="font-weight:900; font-size:14px">👤 ${escapeHtml(customer.name || "—")}</div>
-          <div class="muted" style="font-size:12px">📞 ${escapeHtml(customer.phone || "—")}</div>
-          <div class="muted" style="font-size:12px">ID: ${escapeHtml(String(o.id))}</div>
-        </div>
-        <div>
-          <div class="muted" style="font-size:12px">Ressourcen gesamt</div>
-          <div class="chips" style="margin-top:6px">${renderTotalsChips(totals)}</div>
-        </div>
-      </div>
-
-      <div style="height:10px"></div>
-      <div class="muted" style="font-size:12px; margin-bottom:6px">Produkte</div>
-      <div>${itemLines || `<div class="muted">—</div>`}</div>
-    </div>
-  `;
-}
-
-async function createTestOrder(){
-  const res = await createTestOrderInternal(false);
-  if(res?.ok){
-    alert("✅ Testbestellung erstellt. ID: " + String(res.orderId).slice(0,8));
-    await loadOrders();
-  }
-}
-
-async function createTestOrderAndNotify(){
-  const res = await createTestOrderInternal(true);
-  if(res?.ok){
-    alert("✅ Test + Discord gesendet. ID: " + String(res.orderId).slice(0,8));
-    await loadOrders();
-  }
-}
-
-async function createTestOrderInternal(sendNotify){
-  try{
-    // 1–2 zufällige Produkte
-    const pick = (arr)=>arr[Math.floor(Math.random()*arr.length)];
-    const n = Math.min(2, Math.max(1, products.length ? (Math.random()<0.5?1:2) : 0));
-    if(!products.length) return { ok:false };
-
-    const chosen = [];
-    const used = new Set();
-    while(chosen.length < n){
-      const p = pick(products);
-      if(used.has(p.id)) continue;
-      used.add(p.id);
-
-      // Varianten (optional)
-      const vars = Array.isArray(p.variants) ? p.variants : [];
-      const v = vars.length ? vars[0] : { name:"Standard", multiplier:1 };
-
-      chosen.push({
-        productId: p.id,
-        name: p.name,
-        qty: 1,
-        variantName: v.name || "Standard",
-        variantMultiplier: Number(v.multiplier||1) || 1,
-        resources: p.resources || []
-      });
-    }
-
-    const payload = {
-      status: "offen",
-      customer: { name:"Testkunde", phone:"000000" },
-      items: chosen
-    };
-
-    const ins = await sb.from("orders").insert(payload).select("id").maybeSingle();
-    if(ins.error){ console.error(ins.error); return { ok:false }; }
-
-    if(sendNotify){
-      const nfy = window.__shopSettings?.notify;
-      if(nfy?.enabled && nfy?.edgeFunctionUrl){
-        try{
-          await fetch(nfy.edgeFunctionUrl, {
-            method:"POST",
-            headers:{
-              "Content-Type":"application/json",
-              "Authorization":"Bearer " + SUPABASE_ANON_KEY
-            },
-            body: JSON.stringify({ order_id: ins.data?.id, order: payload })
-          });
-        }catch(e){
-          console.warn("Notify failed", e);
-        }
-      }
-    }
-
-    return { ok:true, orderId: ins.data?.id };
-  }catch(e){
-    console.error(e);
-    return { ok:false };
-  }
 }
 
 async function loadOrders(){
   const tb = document.getElementById("ordersTable");
-
-  // 📦 Auto-Archiv: Bestellungen älter als 30 Tage
-  await autoArchiveOldOrders(30);
   tb.innerHTML = `<tr><td colspan="4" class="muted">Lade…</td></tr>`;
 
   const r = await sb.from("orders").select("*").order("created_at", {ascending:false});
@@ -1545,78 +1048,41 @@ async function loadOrders(){
   }
 
   ordersCache = r.data || [];
-  updateOrdersDashboard(ordersCache);
+  tb.innerHTML = ordersCache.length ? "" : `<tr><td colspan="4" class="muted">Keine Bestellungen</td></tr>`;
 
-  // Filter anwenden
-  const shown = (ordersFilter==="all")
-    ? ordersCache
-    : ordersCache.filter(o => String(o.status || "offen") === ordersFilter);
-
-  tb.innerHTML = shown.length ? "" : `<tr><td colspan="4" class="muted">Keine Bestellungen</td></tr>`;
-
-  shown.forEach(o=>{
-    const isOpen = ordersExpanded.has(o.id);
-    const customer = o.customer || {};
+  ordersCache.forEach(o=>{
     const tr = document.createElement("tr");
-    tr.style.cursor = "pointer";
     tr.innerHTML = `
       <td>${new Date(o.created_at).toLocaleString("de-DE")}</td>
-      <td>
-        <b>${escapeHtml(customer.name || "—")}</b>
-        <div class="muted" style="font-size:12px">${escapeHtml(customer.phone || "")}</div>
-      </td>
-      <td><b>${escapeHtml(o.status || "offen")}</b></td>
+      <td class="muted">${String(o.id).slice(0,8)}</td>
+      <td><b>${o.status || "offen"}</b></td>
       <td style="display:flex; gap:6px; flex-wrap:wrap">
-        <button class="success" data-st="bearbeitet" data-id="${o.id}">erledigt</button>
+        <button class="success" data-st="bearbeitet" data-id="${o.id}">bearbeitet</button>
         <button data-st="offen" data-id="${o.id}">offen</button>
         <button class="danger" data-st="storniert" data-id="${o.id}">storniert</button>
-        <button data-st="archiviert" data-id="${o.id}">archiv</button>
-        <button class="danger" data-del-order="${o.id}">🗑 löschen</button>
       </td>
     `;
     tb.appendChild(tr);
-
-    // Details Row
-    const tr2 = document.createElement("tr");
-    tr2.innerHTML = `<td colspan="4" style="padding:10px">${renderOrderDetails(o)}</td>`;
-    tr2.style.display = isOpen ? "" : "none";
-    tb.appendChild(tr2);
-
-    // Klick auf Zeile klappt ein/aus (Buttons sollen nicht togglen)
-    tr.addEventListener("click", (e)=>{
-      const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
-      if(tag === "button" || tag === "select" || tag === "input") return;
-      if(ordersExpanded.has(o.id)) ordersExpanded.delete(o.id);
-      else ordersExpanded.add(o.id);
-      tr2.style.display = ordersExpanded.has(o.id) ? "" : "none";
-    });
   });
 
-  // Status Buttons
   tb.querySelectorAll("[data-st]").forEach(b=>b.onclick=async (e)=>{
-    e.stopPropagation();
+    // nicht einklappen auslösen (falls Zeilen-Klick aktiv ist)
+    if(e) e.stopPropagation?.();
+
     const id = b.getAttribute("data-id");
     const status = b.getAttribute("data-st");
     const u = await sb.from("orders").update({ status }).eq("id", id);
     if(u.error){ console.error(u.error); alert("Status speichern fehlgeschlagen (RLS?)"); return; }
-    await loadOrders();
-  });
 
-  // Delete Buttons
-  tb.querySelectorAll("[data-del-order]").forEach(b=>b.onclick=async (e)=>{
-    e.stopPropagation();
-    const id = b.getAttribute("data-del-order");
-    const ok = confirm("Bestellung wirklich löschen? (Kann nicht rückgängig gemacht werden)");
-    if(!ok) return;
-    const d = await sb.from("orders").delete().eq("id", id);
-    if(d.error){ console.error(d.error); alert("Löschen fehlgeschlagen (RLS?)"); return; }
-    // expanded state entfernen
-    ordersExpanded.delete(id);
+    const od = (ordersCache || []).find(x=>String(x.id)===String(id));
+    await notifyOrderStatusChange(id, status, od || null);
+
     await loadOrders();
   });
 }
 
-/* ========= Admin: Notify (URL anzeigen + MERGE speichern) ========= */
+
+/* ========= Admin: Notify (Edge Function URL speichern) ========= */
 function renderAdminNotify(){
   const el = document.getElementById("panelNotify");
   el.innerHTML = `
@@ -1624,7 +1090,7 @@ function renderAdminNotify(){
       <div class="head"><b>Notify</b></div>
       <div class="body">
         <div class="muted" style="font-size:12px">
-          Trage hier die Edge Function URL ein. (Speicherung in shop_settings → data.notify)
+          Trage hier nur die Edge Function URL ein (keine Webhooks im Frontend!).
         </div>
         <div style="height:10px"></div>
         <input id="nfUrl" placeholder="https://...supabase.co/functions/v1/notify-order" />
@@ -1633,32 +1099,12 @@ function renderAdminNotify(){
       </div>
     </div>
   `;
-
-  // Feld mit aktuellem Wert füllen (aus geladenen Settings)
-  const current = (window.__shopSettings?.notify?.edgeFunctionUrl) || "";
-  document.getElementById("nfUrl").value = current;
-
   document.getElementById("nfSave").onclick = async ()=>{
     const edgeUrl = (document.getElementById("nfUrl").value||"").trim();
-
-    // ✅ MERGE (damit colors/title erhalten bleiben)
-    const cur = await sb.from("shop_settings").select("data").eq("id", 1).maybeSingle();
-    const base = cur.data?.data || {};
-
-    const merged = {
-      ...base,
-      notify: {
-        ...(base.notify || {}),
-        enabled: !!edgeUrl,
-        edgeFunctionUrl: edgeUrl
-      }
-    };
-
-    const r = await sb.from("shop_settings").update({ data: merged }).eq("id", 1);
+    const data = { notify: { enabled: !!edgeUrl, edgeFunctionUrl: edgeUrl } };
+    const r = await sb.from("shop_settings").update({ data }).eq("id", 1);
     if(r.error){ console.error(r.error); alert("Notify speichern fehlgeschlagen (RLS?)"); return; }
-
-    window.__shopSettings = merged;
-    alert("✅ Notify gespeichert.");
+    alert("Notify gespeichert.");
   };
 }
 
