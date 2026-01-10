@@ -226,7 +226,21 @@
       display:flex; justify-content:space-between; align-items:center;
     }
     .modalBody{padding:14px}
-  </style>
+  
+/* === Brand Animation === */
+.brandWrap{
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.brandWrap.brandEnter{
+  animation: brandEnter .55s ease-out forwards;
+}
+@keyframes brandEnter{
+  from{ opacity:0; transform: translateY(-6px); }
+  to{ opacity:1; transform: translateY(0); }
+}
+
+</style>
 </head>
 <body>
 
@@ -352,6 +366,13 @@ function showBanner(msg){
   banner.textContent = msg;
 }
 
+
+
+// Brand animation on first paint
+requestAnimationFrame(()=>{
+  const bw = document.querySelector(".brandWrap");
+  if(bw) bw.classList.add("brandEnter");
+});
 /* ========= Supabase Daten ========= */
 const SUPABASE_URL = "https://hmfyjgmgkqjcspjyqihm.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhtZnlqZ21na3FqY3NwanlxaWhtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc4ODc5MTYsImV4cCI6MjA4MzQ2MzkxNn0.j873-VozJFlYk1zBRvbirbH9eFW_wP_gtbFn0zTVqTo";
@@ -670,8 +691,20 @@ async function loadPublic(){
       document.getElementById("brandTitle").textContent = data.title;
     }
 
-    const c = data.colors || {};
+    
+
+    // Brand subtitle + styling (optional)
+    const subEl = document.getElementById("brandSubtitle");
+    if(subEl){
+      subEl.textContent = (data.subtitle || subEl.textContent || "By Benzen");
+    }
+const c = data.colors || {};
     const root = document.documentElement.style;
+    // Brand subtitle color + position (optional)
+    if(data.subtitleColor) root.setProperty("--brand-subtitle-color", data.subtitleColor);
+    if(data.brandTop!=null) root.setProperty("--brand-top", `${parseInt(data.brandTop)||14}px`);
+    if(data.brandLeft!=null) root.setProperty("--brand-left", `${parseInt(data.brandLeft)||16}px`);
+
     if(c.bg) root.setProperty("--bg", c.bg);
     if(c.card) root.setProperty("--card", c.card);
     if(c.text) root.setProperty("--text", c.text);
@@ -1308,6 +1341,10 @@ function renderAdminTheme(){
   const css = getComputedStyle(document.documentElement);
   const cur = {
     title: document.getElementById("brandTitle").textContent || "BulletFarm",
+    subtitle: (document.getElementById("brandSubtitle")?.textContent || "By Benzen"),
+    subtitleColor: css.getPropertyValue("--brand-subtitle-color").trim() || "#7dd3fc",
+    brandTop: parseInt(css.getPropertyValue("--brand-top")) || 14,
+    brandLeft: parseInt(css.getPropertyValue("--brand-left")) || 16,
     bg: css.getPropertyValue("--bg").trim(),
     card: css.getPropertyValue("--card").trim(),
     text: css.getPropertyValue("--text").trim(),
@@ -1325,6 +1362,18 @@ function renderAdminTheme(){
 
         <div style="height:10px"></div>
         <input id="tTitle" placeholder="Shop Titel" value="${escapeHtml(cur.title)}" />
+
+        <div style="height:10px"></div>
+        <input id="tSubtitle" placeholder="Untertitel (z.B. By Benzen)" />
+
+        <div style="height:10px"></div>
+        <label class="muted">Untertitel Farbe <input id="tSubtitleColor" type="color" style="width:100%;height:44px;padding:6px" /></label>
+
+        <div style="height:10px"></div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
+          <label class="muted">Position oben (px) <input id="tBrandTop" type="number" min="0" max="300" step="1" style="width:100%;height:44px;padding:10px" /></label>
+          <label class="muted">Position links (px) <input id="tBrandLeft" type="number" min="0" max="300" step="1" style="width:100%;height:44px;padding:10px" /></label>
+        </div>
 
         <div style="height:12px"></div>
 
@@ -1362,9 +1411,31 @@ function renderAdminTheme(){
   setColor("tSuccess", "#34d399");
   setColor("tDanger", "#fb7185");
 
+  // Brand subtitle defaults
+  const subInp = document.getElementById("tSubtitle");
+  if(subInp) subInp.value = cur.subtitle || "By Benzen";
+  const subCol = document.getElementById("tSubtitleColor");
+  if(subCol) subCol.value = cur.subtitleColor || "#7dd3fc";
+
+  // Brand position defaults
+  const topInp = document.getElementById("tBrandTop");
+  if(topInp) topInp.value = String(cur.brandTop ?? 14);
+  const leftInp = document.getElementById("tBrandLeft");
+  if(leftInp) leftInp.value = String(cur.brandLeft ?? 16);
+
+
   function applyPreview(){
     document.getElementById("brandTitle").textContent = (document.getElementById("tTitle").value||"").trim() || "BulletFarm";
+    const sub = (document.getElementById("tSubtitle")?.value || "").trim() || "By Benzen";
+    const subEl = document.getElementById("brandSubtitle");
+    if(subEl) subEl.textContent = sub;
     const root = document.documentElement.style;
+    const subColor = document.getElementById("tSubtitleColor")?.value;
+    if(subColor) root.setProperty("--brand-subtitle-color", subColor);
+    const topPx = parseInt(document.getElementById("tBrandTop")?.value || "14");
+    const leftPx = parseInt(document.getElementById("tBrandLeft")?.value || "16");
+    if(Number.isFinite(topPx)) root.setProperty("--brand-top", `${topPx}px`);
+    if(Number.isFinite(leftPx)) root.setProperty("--brand-left", `${leftPx}px`);
     root.setProperty("--bg", document.getElementById("tBg").value);
     root.setProperty("--card", document.getElementById("tCard").value);
     root.setProperty("--text", document.getElementById("tText").value);
@@ -1387,6 +1458,10 @@ function renderAdminTheme(){
     const merged = {
       ...base,
       title: (document.getElementById("tTitle").value||"").trim() || "BulletFarm",
+      subtitle: (document.getElementById("tSubtitle")?.value || "").trim() || "By Benzen",
+      subtitleColor: document.getElementById("tSubtitleColor")?.value || "#7dd3fc",
+      brandTop: parseInt(document.getElementById("tBrandTop")?.value || "14") || 14,
+      brandLeft: parseInt(document.getElementById("tBrandLeft")?.value || "16") || 16,
       colors: {
         ...(base.colors || {}),
         bg: document.getElementById("tBg").value,
