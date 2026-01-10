@@ -57,11 +57,11 @@
 }
 .brand{
   font-weight: 900;
-  font-size: 18px;
+  font-size: var(--brand-title-size);
   color: var(--brand-title-color);
 }
 .brandSub{
-  font-size: 11px;
+  font-size: var(--brand-subtitle-size);
   font-weight: 600;
   color: var(--brand-subtitle-color);
   opacity: 0.9;
@@ -239,6 +239,11 @@
   from{ opacity:0; transform: translateY(-6px); }
   to{ opacity:1; transform: translateY(0); }
 }
+
+
+/* === Header Tabs Alignment (right, top centered) === */
+header{ justify-content: flex-end !important; }
+header .tabs{ margin-left: auto; justify-content: flex-end; }
 
 </style>
 </head>
@@ -700,16 +705,24 @@ async function loadPublic(){
     }
 const c = data.colors || {};
     const root = document.documentElement.style;
-    // Brand subtitle color + position (optional)
-    if(data.subtitleColor) root.setProperty("--brand-subtitle-color", data.subtitleColor);
 
+    // Brand subtitle color + position + sizes (optional)
+    if(data.subtitleColor) root.setProperty("--brand-subtitle-color", data.subtitleColor);
     if(data.brandTop!=null) root.setProperty("--brand-top", `${parseInt(data.brandTop)||14}px`);
     if(data.brandLeft!=null) root.setProperty("--brand-left", `${parseInt(data.brandLeft)||16}px`);
     if(data.brandTitleSize!=null) root.setProperty("--brand-title-size", `${parseInt(data.brandTitleSize)||18}px`);
     if(data.brandSubtitleSize!=null) root.setProperty("--brand-subtitle-size", `${parseInt(data.brandSubtitleSize)||11}px`);
 
-    if(data.brandTop!=null) root.setProperty("--brand-top", `${parseInt(data.brandTop)||14}px`);
-    if(data.brandLeft!=null) root.setProperty("--brand-left", `${parseInt(data.brandLeft)||16}px`);
+    // Brand subtitle color + position (optional)
+    if(data.subtitleColor) root.setProperty("--brand-subtitle-color", data.subtitleColor);
+
+    
+    
+    if(data.brandTitleSize!=null) root.setProperty("--brand-title-size", `${parseInt(data.brandTitleSize)||18}px`);
+    if(data.brandSubtitleSize!=null) root.setProperty("--brand-subtitle-size", `${parseInt(data.brandSubtitleSize)||11}px`);
+
+    
+    
 
     if(c.bg) root.setProperty("--bg", c.bg);
     if(c.card) root.setProperty("--card", c.card);
@@ -1351,6 +1364,8 @@ function renderAdminTheme(){
     subtitleColor: css.getPropertyValue("--brand-subtitle-color").trim() || "#7dd3fc",
     brandTop: parseInt(css.getPropertyValue("--brand-top")) || 14,
     brandLeft: parseInt(css.getPropertyValue("--brand-left")) || 16,
+    brandTitleSize: parseInt(css.getPropertyValue("--brand-title-size")) || 18,
+    brandSubtitleSize: parseInt(css.getPropertyValue("--brand-subtitle-size")) || 11,
     bg: css.getPropertyValue("--bg").trim(),
     card: css.getPropertyValue("--card").trim(),
     text: css.getPropertyValue("--text").trim(),
@@ -1384,6 +1399,14 @@ function renderAdminTheme(){
         <div style="height:12px"></div>
 
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
+
+        <div style="height:10px"></div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
+          <label class="muted">Titel Größe (px) <input id="tBrandTitleSize" type="number" min="10" max="50" step="1" style="width:100%;height:44px;padding:10px" /></label>
+          <label class="muted">Untertitel Größe (px) <input id="tBrandSubtitleSize" type="number" min="8" max="40" step="1" style="width:100%;height:44px;padding:10px" /></label>
+        </div>
+
+
           <label class="muted">Background <input id="tBg" type="color" style="width:100%;height:44px;padding:6px" /></label>
           <label class="muted">Card <input id="tCard" type="color" style="width:100%;height:44px;padding:6px" /></label>
           <label class="muted">Text <input id="tText" type="color" style="width:100%;height:44px;padding:6px" /></label>
@@ -1424,6 +1447,12 @@ function renderAdminTheme(){
   if(subCol) subCol.value = cur.subtitleColor || "#7dd3fc";
 
   // Brand position defaults
+  // Brand size defaults
+  const tSz = document.getElementById("tBrandTitleSize");
+  if(tSz) tSz.value = String(cur.brandTitleSize ?? 18);
+  const sSz = document.getElementById("tBrandSubtitleSize");
+  if(sSz) sSz.value = String(cur.brandSubtitleSize ?? 11);
+
   const topInp = document.getElementById("tBrandTop");
   if(topInp) topInp.value = String(cur.brandTop ?? 14);
   const leftInp = document.getElementById("tBrandLeft");
@@ -1468,6 +1497,8 @@ function renderAdminTheme(){
       subtitleColor: document.getElementById("tSubtitleColor")?.value || "#7dd3fc",
       brandTop: parseInt(document.getElementById("tBrandTop")?.value || "14") || 14,
       brandLeft: parseInt(document.getElementById("tBrandLeft")?.value || "16") || 16,
+      brandTitleSize: parseInt(document.getElementById("tBrandTitleSize")?.value || "18") || 18,
+      brandSubtitleSize: parseInt(document.getElementById("tBrandSubtitleSize")?.value || "11") || 11,
       colors: {
         ...(base.colors || {}),
         bg: document.getElementById("tBg").value,
