@@ -716,7 +716,7 @@ function renderCartSummary(totals){
     return `
       <span class="chip">
         <span class="dot" style="background:${v.color||"#fff"}"></span>
-        ${escapeHtml(name)}: <b data-total="${key}">${formatNumberDE(v.amount, {compact:true})}</b>
+        ${escapeHtml(name)}: <b data-total="${key}">${formatDEInt(v.amount)}</b>
       </span>
     `;
   }).join(" ");
