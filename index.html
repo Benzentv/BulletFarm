@@ -685,21 +685,67 @@ function renderCartSummary(totals){
   const box = document.getElementById("cartSummary");
   if(!box) return;
 
+  // merken (für Animationen)
+  window.__lastCartTotals = window.__lastCartTotals || {};
+
   if(!totals || totals.size===0){
     box.innerHTML = `
       <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
       <div class="muted">— keine Ressourcen —</div>
     `;
+    window.__lastCartTotals = {};
     return;
   }
-  const chips = Array.from(totals.entries()).map(([name,v])=>
-    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${formatDEInt(v.amount)}</b></span>`
-  ).join(" ");
+
+  const preferred = ["Deadcoins", "Waffenteile", "Eisen", "Plastik", "Wolfram"];
+  const orderIdx = (n)=>{
+    const i = preferred.findIndex(x=>x.toLowerCase() === String(n||"").toLowerCase());
+    return i === -1 ? 999 : i;
+  };
+
+  const entries = Array.from(totals.entries())
+    .sort((a,b)=>{
+      const oa = orderIdx(a[0]);
+      const ob = orderIdx(b[0]);
+      if(oa !== ob) return oa - ob;
+      return String(a[0]).localeCompare(String(b[0]), "de");
+    });
+
+  const chips = entries.map(([name,v])=>{
+    const key = String(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");
+    return `
+      <span class="chip">
+        <span class="dot" style="background:${v.color||"#fff"}"></span>
+        ${escapeHtml(name)}: <b data-total="${key}">${formatNumberDE(v.amount, {compact:true})}</b>
+      </span>
+    `;
+  }).join(" ");
 
   box.innerHTML = `
     <div class="cartSummaryTitle">Du erhältst insgesamt:</div>
     <div class="cartSummaryBig">${chips}</div>
   `;
+
+  // Animation bei Zahlenänderung
+  const next = {};
+  entries.forEach(([name,v])=>{
+    const key = String(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"_");
+    next[key] = Math.round(Number(v.amount)||0);
+  });
+
+  box.querySelectorAll("b[data-total]").forEach(el=>{
+    const k = el.getAttribute("data-total");
+    const prev = window.__lastCartTotals[k];
+    const cur = next[k];
+    if(prev != null && prev !== cur){
+      el.classList.remove("pulse");
+      // reflow trick damit animation zuverlässig neu startet
+      void el.offsetWidth;
+      el.classList.add("pulse");
+    }
+  });
+
+  window.__lastCartTotals = next;
 }
 
 
@@ -1049,13 +1095,32 @@ function parseAmountDE(input){
   return Number.isFinite(n) ? n : null;
 }
 
-function formatDEInt(n){
-  const x = Math.round(Number(n) || 0);
-  return x.toLocaleString("de-DE");
+function formatNumberDE(n, opts = {}){
+  const num = Number(n) || 0;
+  const compact = !!opts.compact;
+
+  const abs = Math.abs(num);
+  // Compact ab 1 Mio: 1,2 Mio / 3,4 Mrd
+  if(compact && abs >= 1_000_000){
+    const isBillion = abs >= 1_000_000_000;
+    const base = isBillion ? 1_000_000_000 : 1_000_000;
+    const suffix = isBillion ? " Mrd" : " Mio";
+    let v = num / base;
+
+    // eine Nachkommastelle, aber ohne ,0
+    let s = v.toFixed(1).replace(".", ",");
+    if(s.endsWith(",0")) s = s.slice(0, -2);
+    return s + suffix;
+  }
+
+  // Standard: Tausenderpunkte (de-DE)
+  return Math.round(num).toLocaleString("de-DE");
 }
 
-
-
+function formatDEInt(n){
+  // legacy wrapper
+  return formatNumberDE(n, { compact:false });
+}
 function renderAdminProducts(){
   const el = document.getElementById("panelProducts");
 
