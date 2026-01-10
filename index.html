@@ -279,37 +279,41 @@ to{ opacity:1; transform: translateY(0); }
 /* === Responsive Header Fix (small windows) === */
 @media (max-width: 720px){
   header{ justify-content: center; }
-  /* ================= HEADER: Tabs always right (no overlap) ================= */
+  
+/* ================= HEADER: Logo + Tabs without overlap =================
+   - Tabs stay right aligned
+   - No overlap when window gets smaller (tabs wrap to next line)
+   - Logo moves with layout (not fixed over tabs)
+======================================================================= */
 header{
-  display:flex;
+  display:grid;
+  grid-template-columns: 1fr auto;
   align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  flex-wrap:nowrap;
+  gap:14px 16px;
 }
 
-/* 3-zone layout */
-.headerLeft{flex:0 1 auto; min-width:220px;}
-.headerSpacer{flex:1 1 auto; min-width:10px;}
-.headerRight{flex:0 0 auto; display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; align-items:center;}
+.headerLeft{ min-width: 0; }          /* allow text to shrink/wrap */
+.headerRight{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; align-items:center; }
 
+/* Keep some breathing room between logo area and tabs */
 .brandWrap{
-  margin-right:0 !important;
-  max-width: min(520px, calc(100vw - 420px)); /* keeps space for right tabs */
+  max-width: 100%;
+  padding-right: 10px;
 }
 
-/* When window gets smaller, allow wrapping but keep right block aligned right */
-@media (max-width: 900px){
-  header{flex-wrap:wrap; align-items:flex-start;}
-  .headerSpacer{display:none;}
-  .headerLeft{flex:1 1 100%; min-width:0;}
-  .headerRight{width:100%; justify-content:flex-end;}
-  .brandWrap{max-width:100%; transform: translate(var(--brand-left), var(--brand-top));}
+/* If space is tight, move tabs to a new line but keep them right aligned */
+@media (max-width: 980px){
+  header{ grid-template-columns: 1fr; }
+  .headerRight{ justify-content:flex-end; }
 }
 @media (max-width: 520px){
-  .headerRight{justify-content:center;}
+  .headerRight{ justify-content:center; }
+  .brandWrap{ text-align:center; align-items:center; }
 }
-/* ========================================================== */
+/* ===================================================================== */
+
+
+.headerSpacer{display:none;}
 
 </style>
 </head>
