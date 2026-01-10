@@ -1599,6 +1599,14 @@ async function loadOrders(){
     const status = b.getAttribute("data-st");
     const u = await sb.from("orders").update({ status }).eq("id", id);
     if(u.error){ console.error(u.error); alert("Status speichern fehlgeschlagen (RLS?)"); return; }
+    
+    // ✅ Discord informieren
+try {
+  await notifyOrderStatusChange(id, status);
+} catch (err) {
+  console.warn("Discord notify failed", err);
+}
+
     await loadOrders();
   });
 
