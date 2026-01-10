@@ -324,31 +324,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 let sb = null;
 
-/* ========= Discord Notify: Status Update ========= */
-async function notifyOrderStatusChange(orderId, newStatus){
-  const n = window.__shopSettings?.notify;
-  if(!n?.enabled || !n?.edgeFunctionUrl) return;
-
-  const r = await fetch(n.edgeFunctionUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + SUPABASE_ANON_KEY
-    },
-    body: JSON.stringify({
-      type: "status_update",
-      order_id: orderId,
-      status: newStatus
-    })
-  });
-
-  // optional: damit du in der Konsole direkt siehst, wenn die Function ablehnt
-  if(!r.ok){
-    const t = await r.text().catch(()=>"");
-    throw new Error(`notifyOrderStatusChange failed: ${r.status} ${t}`);
-  }
-}
-
 /* ========= State ========= */
 let categories = [];
 let products = [];
@@ -745,7 +720,25 @@ const adminTabsEl = document.getElementById("adminTabs");
 const adminPanelsEl = document.getElementById("adminPanels");
 const adminNoteEl = document.getElementById("adminNote");
 
-const ADMIN_SECTIONS = [
+// ===== Admin Role (profiles.role) =====
+let currentAdminRole = null; // 'status_only' | 'admin' | null
+function isStatusOnly(){ return currentAdminRole === 'status_only'; }
+
+async function fetchMyRole(){
+  try{
+    const { data: { user } } = await sb.auth.getUser();
+    if(!user) return null;
+    const r = await sb.from('profiles').select('role').eq('id', user.id).maybeSingle();
+    if(r.error){ console.warn('role read failed', r.error); return null; }
+    return r.data?.role || null;
+  }catch(e){
+    console.warn('fetchMyRole exception', e);
+    return null;
+  }
+}
+
+
+const BASE_ADMIN_SECTIONS = [
   { id:"products", label:"Produkte" },
   { id:"categories", label:"Kategorien" },
   { id:"theme", label:"Theme" },
@@ -753,6 +746,12 @@ const ADMIN_SECTIONS = [
   { id:"notify", label:"Notify" },
 ];
 let adminActive = "products";
+
+function getAdminSections(){
+  // status_only darf nur Bestellungen sehen
+  if(isStatusOnly()) return [{ id:'orders', label:'Bestellungen' }];
+  return BASE_ADMIN_SECTIONS;
+}
 
 function showPanel(id){
   ["panelProducts","panelCategories","panelTheme","panelOrders","panelNotify"].forEach(pid=>{
@@ -769,7 +768,7 @@ function showPanel(id){
 function renderAdminTabs(){
   adminTabsEl.innerHTML = "";
   adminTabsEl.style.display = "flex";
-  ADMIN_SECTIONS.forEach(s=>{
+  getAdminSections().forEach(s=>{
     const b = document.createElement("button");
     b.textContent = s.label;
     b.className = "primary";
@@ -789,17 +788,32 @@ async function refreshAuthUI(){
     ? `Eingeloggt ✅ (${sess.data.session.user.email})`
     : "Bitte einloggen.";
 
+  if(loggedIn){
+    currentAdminRole = await fetchMyRole();
+  }else{
+    currentAdminRole = null;
+  }
+
   adminTabsEl.style.display = loggedIn ? "flex" : "none";
   adminPanelsEl.style.display = loggedIn ? "" : "none";
-  adminNoteEl.textContent = loggedIn
-    ? "Admin aktiv: Produkte/Kategorien/Theme/Orders/Notify"
-    : "Nur eingeloggte Admins können bearbeiten (RLS).";
 
-  if(loggedIn){
-    renderAdminTabs();
-    showPanel(adminActive);
+  if(!loggedIn){
+    adminNoteEl.textContent = "Bitte einloggen.";
+    return;
   }
+
+  adminNoteEl.textContent = isStatusOnly()
+    ? "Zugriff: Nur Bestellungen (Status ändern)."
+    : "Admin aktiv: Produkte/Kategorien/Theme/Orders/Notify";
+
+  const sections = getAdminSections();
+  const first = sections[0]?.id || "orders";
+  if(!sections.some(x=>x.id === adminActive)) adminActive = first;
+
+  renderAdminTabs();
+  showPanel(adminActive);
 }
+
 
 document.getElementById("btnLogin").onclick = async ()=>{
   if(!sb){ alert("Supabase nicht bereit"); return; }
@@ -1370,6 +1384,7 @@ async function autoArchiveOldOrders(days=30){
 
 function renderAdminOrders(){
   const el = document.getElementById("panelOrders");
+  const showTests = !isStatusOnly();
   el.innerHTML = `
     <div class="card" style="margin-top:10px">
       <div class="head" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
@@ -1384,8 +1399,8 @@ function renderAdminOrders(){
             <option value="archiviert">Archiv</option>
           </select>
           <div id="ordersDash" class="muted" style="font-size:12px; margin-right:6px"></div>
-          <button id="btnTestOrder" class="primary">Testbestellung</button>
-          <button id="btnTestOrderNotify" class="success">Test + Discord</button>
+          ${showTests ? `<button id="btnTestOrder" class="primary">Testbestellung</button>
+          <button id="btnTestOrderNotify" class="success">Test + Discord</button>` : ``}
           <button id="btnLoadOrders">Laden</button>
         </div>
       </div>
@@ -1410,8 +1425,10 @@ function renderAdminOrders(){
 
   document.getElementById("btnLoadOrders").onclick = loadOrders;
   updateOrdersDashboard(ordersCache);
-  document.getElementById("btnTestOrder").onclick = createTestOrder;
-  document.getElementById("btnTestOrderNotify").onclick = createTestOrderAndNotify;
+  if(showTests){
+    document.getElementById("btnTestOrder").onclick = createTestOrder;
+    document.getElementById("btnTestOrderNotify").onclick = createTestOrderAndNotify;
+  }
 }
 
 function orderResTotals(items){
@@ -1596,7 +1613,7 @@ async function loadOrders(){
         <button data-st="offen" data-id="${o.id}">offen</button>
         <button class="danger" data-st="storniert" data-id="${o.id}">storniert</button>
         <button data-st="archiviert" data-id="${o.id}">archiv</button>
-        <button class="danger" data-del-order="${o.id}">🗑 löschen</button>
+        ${isStatusOnly() ? `` : `<button class="danger" data-del-order="${o.id}">🗑 löschen</button>`}
       </td>
     `;
     tb.appendChild(tr);
@@ -1635,8 +1652,9 @@ try {
     await loadOrders();
   });
 
-  // Delete Buttons
-  tb.querySelectorAll("[data-del-order]").forEach(b=>b.onclick=async (e)=>{
+  // Delete Buttons (nur Voll-Admin)
+  if(!isStatusOnly()){
+    tb.querySelectorAll("[data-del-order]").forEach(b=>b.onclick=async (e)=>{
     e.stopPropagation();
     const id = b.getAttribute("data-del-order");
     const ok = confirm("Bestellung wirklich löschen? (Kann nicht rückgängig gemacht werden)");
@@ -1646,7 +1664,8 @@ try {
     // expanded state entfernen
     ordersExpanded.delete(id);
     await loadOrders();
-  });
+    });
+  }
 }
 
 /* ========= Admin: Notify (URL anzeigen + MERGE speichern) ========= */
