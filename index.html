@@ -1597,7 +1597,7 @@ async function loadOrders(){
     e.stopPropagation();
     const id = b.getAttribute("data-id");
     const status = b.getAttribute("data-st");
-    const u = await sb.from("orders").update({ status }).eq("id", id);
+    const u = await sb.from("orders").update({ status }).eq("id", id).select();
     if(u.error){ console.error(u.error); alert("Status speichern fehlgeschlagen (RLS?)"); return; }
     
     // ✅ Discord informieren
