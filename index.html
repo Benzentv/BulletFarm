@@ -13,6 +13,13 @@
 
   <style>
     :root{
+
+  /* === Brand Position & Farben === */
+  --brand-top: 14px;
+  --brand-left: 16px;
+  --brand-title-color: var(--text);
+  --brand-subtitle-color: var(--primary);
+
       --bg:#0b0f14;
       --card:#111826;
       --border: rgba(255,255,255,.12);
@@ -38,6 +45,28 @@
       backdrop-filter: blur(10px);
     }
     .brand{font-weight:900}
+
+.brandWrap{
+  position: fixed;
+  top: var(--brand-top);
+  left: var(--brand-left);
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  z-index: 1001;
+}
+.brand{
+  font-weight: 900;
+  font-size: 18px;
+  color: var(--brand-title-color);
+}
+.brandSub{
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-subtitle-color);
+  opacity: 0.9;
+}
+
     .tabs{display:flex; gap:8px; flex-wrap:wrap}
     .pill{
       border:1px solid var(--border);
@@ -202,7 +231,12 @@
 <body>
 
 <header>
-  <div class="brand" id="brandTitle">BulletFarm</div>
+  
+  <div class="brandWrap">
+    <div class="brand" id="brandTitle">BulletFarm</div>
+    <div class="brandSub" id="brandSubtitle">By Benzen</div>
+  </div>
+
   <div class="tabs">
     <div class="pill active" id="tabShop">Shop</div>
     <div class="pill" id="tabFav">⭐ Favoriten</div>
