@@ -47,13 +47,12 @@
     .brand{font-weight:900}
 
 .brandWrap{
-  position: fixed;
-  top: var(--brand-top);
-  left: var(--brand-left);
+  position: relative;
   display: flex;
+  transform: translate(var(--brand-left), var(--brand-top));
+  will-change: transform;
   flex-direction: column;
   line-height: 1.1;
-  z-index: 1001;
 }
 .brand{
   font-weight: 900;
@@ -237,20 +236,16 @@
 /* === Brand Animation === */
 .brandWrap{
   opacity: 0;
-  transform: translateY(-6px);
 }
 .brandWrap.brandEnter{
   animation: brandEnter .55s ease-out forwards;
 }
 @keyframes brandEnter{
-  from{ opacity:0; transform: translateY(-6px); }
-  to{ opacity:1; transform: translateY(0); }
+  from{ opacity:0; }
+  to{ opacity:1; }
 }
-
-
-/* === Header Tabs Alignment (right, top centered) === */
-header{ justify-content: flex-end !important; }
-header .tabs{ margin-left: auto; justify-content: flex-end; }
+to{ opacity:1; transform: translateY(0); }
+}
 
 
 /* === Product card readability for 5-col grid === */
@@ -282,30 +277,12 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
 
 
 /* === Responsive Header Fix (small windows) === */
-header{ flex-wrap: wrap; gap:10px; }
-header .tabs{ flex-wrap: wrap; gap:8px; }
-
-/* If window is smaller, don't use fixed brand in corner to avoid overlap */
-@media (max-width: 1400px){
-  .brandWrap{
-    position: static !important;
-    top: auto !important;
-    left: auto !important;
-    opacity: 1 !important;
-    transform: none !important;
-    margin-right: auto;
-    pointer-events: auto;
-  }
-  header{
-    justify-content: space-between !important;
-    align-items: center;
-  }
-}
 @media (max-width: 720px){
-  header{
-    justify-content: center !important;
-  }
-  header .tabs{
+  header{ justify-content: center; }
+  header .tabs{ width:100%; justify-content: center; }
+  .brandWrap{ width:100%; align-items:center; text-align:center; margin-right:0; }
+}
+header .tabs{
     width: 100%;
     justify-content: center !important;
   }
@@ -314,6 +291,20 @@ header .tabs{ flex-wrap: wrap; gap:8px; }
     align-items: center;
     text-align: center;
   }
+}
+
+
+/* === Header Layout: Brand left, Tabs right (no overlap) === */
+header{
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.brandWrap{ margin-right:auto; }
+header .tabs{
+  margin-left: auto;
+  justify-content: flex-end;
+  flex-wrap: wrap;
 }
 
 </style>
