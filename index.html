@@ -324,6 +324,31 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 let sb = null;
 
+/* ========= Discord Notify: Status Update ========= */
+async function notifyOrderStatusChange(orderId, newStatus){
+  const n = window.__shopSettings?.notify;
+  if(!n?.enabled || !n?.edgeFunctionUrl) return;
+
+  const r = await fetch(n.edgeFunctionUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + SUPABASE_ANON_KEY
+    },
+    body: JSON.stringify({
+      type: "status_update",
+      order_id: orderId,
+      status: newStatus
+    })
+  });
+
+  // optional: damit du in der Konsole direkt siehst, wenn die Function ablehnt
+  if(!r.ok){
+    const t = await r.text().catch(()=>"");
+    throw new Error(`notifyOrderStatusChange failed: ${r.status} ${t}`);
+  }
+}
+
 /* ========= State ========= */
 let categories = [];
 let products = [];
