@@ -122,8 +122,12 @@
     button.success{border-color: rgba(52,211,153,.55); background: rgba(52,211,153,.10)}
     button.danger{border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10)}
     .muted{color:var(--muted)}
-    .products{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px}
-    @media (max-width: 720px){ .products{grid-template-columns:1fr} }
+    .products{display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px}
+/* Responsive Breakpoints für gute Lesbarkeit */
+@media (max-width: 1200px){ .products{grid-template-columns:repeat(4, minmax(0,1fr));} }
+@media (max-width: 980px){ .products{grid-template-columns:repeat(3, minmax(0,1fr));} }
+@media (max-width: 720px){ .products{grid-template-columns:repeat(2, minmax(0,1fr));} }
+@media (max-width: 520px){ .products{grid-template-columns:1fr;} }
     .prod{
       border:1px solid var(--border);
       background: rgba(255,255,255,.03);
