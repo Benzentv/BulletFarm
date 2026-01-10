@@ -158,6 +158,32 @@
   background: rgba(255,255,255,.03);
   position: relative;
 }
+.badge{
+  position:absolute;
+  left:8px;
+  top:8px;
+  z-index:2;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background: rgba(0,0,0,.35);
+  backdrop-filter: blur(6px);
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.2px;
+  user-select:none;
+}
+.badge.inline{
+  position: static;
+  left: auto;
+  top: auto;
+}
+.badgeRow{display:flex; justify-content:flex-start; margin-bottom:10px;}
+.badge.popular{ border-color: rgba(251,113,133,.55); box-shadow: 0 0 0 3px rgba(251,113,133,.10) inset; }
+.badge.premium{ border-color: rgba(251,191,36,.55); box-shadow: 0 0 0 3px rgba(251,191,36,.10) inset; }
 .favOverlay{
   position:absolute;
   top:8px;
@@ -498,6 +524,23 @@ function getVariants(p){
   return [{ name: "Standard", multiplier: 1 }];
 }
 
+// Badge: optional in products table as column "badge" ("popular" | "premium" | null)
+function getBadgeKey(p){
+  const raw = (p && (p.badge ?? p.badge_type ?? "")) || "";
+  const k = String(raw).trim().toLowerCase();
+  if(k === "popular" || k === "beliebt") return "popular";
+  if(k === "premium") return "premium";
+  return "";
+}
+function badgeHtml(p, inline=false){
+  const k = getBadgeKey(p);
+  if(!k) return "";
+  const extra = inline ? " inline" : "";
+  if(k === "popular") return `<span class="badge popular${extra}">🔥 Beliebt</span>`;
+  if(k === "premium") return `<span class="badge premium${extra}">💎 Premium</span>`;
+  return "";
+}
+
 function renderProducts(){
   const list = document.getElementById("productList");
   list.innerHTML = "";
@@ -524,6 +567,8 @@ function renderProducts(){
     const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
     const variants = getVariants(p);
     const favActive = isFav(p.id);
+	    const bHtml = badgeHtml(p, false);
+	    const bHtmlInline = badgeHtml(p, true);
     const variantOptions = variants.map((v,idx)=>
       `<option value="${idx}" data-m="${v.multiplier}" data-n="${escapeHtml(v.name)}">${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`
     ).join("");
@@ -531,10 +576,11 @@ function renderProducts(){
     div.innerHTML = `
       ${img ? `
         <div class="previewBox" style="margin-bottom:10px">
+          ${bHtml}
           <button class="favBtn favOverlay ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">${favActive ? "★" : "☆"}</button>
           <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
         </div>
-      ` : ``}
+	      ` : (bHtmlInline ? `<div class="badgeRow">${bHtmlInline}</div>` : ``)}
 
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
@@ -1139,9 +1185,14 @@ function renderAdminProducts(){
         </div>
       </div>
       <div class="body">
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px">
+	        <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap:8px">
           <input id="pName" placeholder="Produktname" />
           <select id="pCat">${catOptions}</select>
+          <select id="pBadge">
+            <option value="">Kein Badge</option>
+            <option value="popular">🔥 Beliebt</option>
+            <option value="premium">💎 Premium</option>
+          </select>
           <input id="pImg" placeholder="Bild URL (optional)" style="grid-column: 1 / -1" />
         </div>
 
@@ -1289,6 +1340,7 @@ if(!Array.isArray(st.variants) || st.variants.length===0){
   document.getElementById("btnSaveProd").onclick = async ()=>{
     const name = (document.getElementById("pName").value||"").trim();
     const cat = document.getElementById("pCat").value;
+    const badge = (document.getElementById("pBadge")?.value || "").trim() || null;
     const image_url = (document.getElementById("pImg").value||"").trim() || null;
 
     if(!name){ alert("Produktname fehlt."); return; }
@@ -1296,6 +1348,7 @@ if(!Array.isArray(st.variants) || st.variants.length===0){
     const payload = {
       name,
       category_id: (cat==="none") ? null : cat,
+      badge,
       image_url,
       resources: st.resources || [],
       variants: (st.variants || []).filter(v=>v && String(v.name||'').trim())
@@ -1336,11 +1389,13 @@ if(!Array.isArray(st.variants) || st.variants.length===0){
 function fillEditorFromProduct(st, productId){
   const nameEl = document.getElementById("pName");
   const catEl = document.getElementById("pCat");
+  const badgeEl = document.getElementById("pBadge");
   const imgEl = document.getElementById("pImg");
 
   if(!productId){
     nameEl.value = "";
     catEl.value = "none";
+    if(badgeEl) badgeEl.value = "";
     imgEl.value = "";
     updateImagePreview("");
     st.setResources([]);
@@ -1353,6 +1408,7 @@ function fillEditorFromProduct(st, productId){
 
   nameEl.value = p.name || "";
   catEl.value = p.category_id ? p.category_id : "none";
+  if(badgeEl) badgeEl.value = getBadgeKey(p);
   imgEl.value = p.image_url || "";
   updateImagePreview(p.image_url || "");
   st.setResources(Array.isArray(p.resources) ? p.resources : []);
