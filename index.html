@@ -324,32 +324,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 let sb = null;
 
-
-
-/* ========= Discord Status Notify (global) ========= */
-window.notifyOrderStatusChange = async function (orderId, newStatus) {
-  const n = window.__shopSettings?.notify;
-  if (!n?.enabled || !n?.edgeFunctionUrl) return;
-
-  const r = await fetch(n.edgeFunctionUrl, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": "Bearer " + SUPABASE_ANON_KEY
-    },
-    body: JSON.stringify({
-      type: "status_update",
-      order_id: orderId,
-      status: newStatus
-    })
-  });
-
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    throw new Error(`Edge function failed: ${r.status} ${t}`);
-  }
-};
-
 /* ========= State ========= */
 let categories = [];
 let products = [];
@@ -930,11 +904,40 @@ function renderAdminCategories(){
 let editProductId = null;
 
 function fmtRes(res){
-  return (res||[]).map(r=>`<span class="chip"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${Number(r.amount)||0}</b></span>`).join("");
+  return (res||[]).map(r=>`<span class="chip"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${formatDEInt(r.amount)}</b></span>`).join("");
 }
 function escapeHtml(s){
   return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 }
+
+// ===== Zahlen-Input: erlaubt 5000, 5.000, 5,000, 5 000 =====
+function parseAmountDE(input){
+  if(input == null) return null;
+  let s = String(input).trim();
+  if(!s) return null;
+
+  // Leerzeichen raus
+  s = s.replace(/\s+/g, "");
+
+  // Wenn Dezimal-Komma am Ende, dann 1.234,56 -> 1234.56
+  const hasCommaDecimal = /,\d+$/.test(s);
+  if(hasCommaDecimal){
+    s = s.replace(/\./g, "").replace(",", ".");
+  }else{
+    // Tausendertrenner entfernen: 1.234 / 1,234 / 1'234
+    s = s.replace(/[.,']/g, "");
+  }
+
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatDEInt(n){
+  const x = Math.round(Number(n) || 0);
+  return x.toLocaleString("de-DE");
+}
+
+
 
 function renderAdminProducts(){
   const el = document.getElementById("panelProducts");
@@ -974,7 +977,7 @@ function renderAdminProducts(){
 
           <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
             <input id="rName" placeholder="Name" style="flex:1; min-width:160px" />
-            <input id="rAmt" type="number" placeholder="Anzahl" style="width:120px" />
+            <input id="rAmt" type="text" inputmode="numeric" placeholder="Anzahl (z.B. 5000 oder 5.000)" style="width:220px" />
             <input id="rColor" type="color" value="#7dd3fc" style="width:70px; padding:6px" />
             <button id="btnAddRes">Hinzufügen</button>
           </div>
@@ -1055,10 +1058,22 @@ function setupEditor(st){
   const imgInput = document.getElementById("pImg");
   imgInput.addEventListener("input", ()=>updateImagePreview(imgInput.value));
 
+
+  // Ressourcen-Menge: erlaubt 5.000 etc. + formatiert beim Verlassen des Feldes
+  const rAmtEl = document.getElementById("rAmt");
+  if(rAmtEl){
+    rAmtEl.addEventListener("blur", ()=>{
+      const n = parseAmountDE(rAmtEl.value);
+      if(n != null) rAmtEl.value = formatDEInt(n);
+    });
+  }
+
   // Ressourcen hinzufügen
   document.getElementById("btnAddRes").onclick = ()=>{
     const name = (document.getElementById("rName").value||"").trim();
-    const amount = Number(document.getElementById("rAmt").value);
+    const amtInput = document.getElementById("rAmt");
+    const amountParsed = parseAmountDE(amtInput.value);
+    const amount = (amountParsed == null) ? NaN : Math.round(amountParsed);
     const color = document.getElementById("rColor").value;
 
     if(!name || !Number.isFinite(amount) || amount<=0){
@@ -1187,7 +1202,7 @@ function renderResChips(st){
   box.innerHTML = res.map((r,idx)=>
     `<span class="chip">
       <span class="dot" style="background:${r.color||'#fff'}"></span>
-      ${escapeHtml(r.name)}: <b>${Number(r.amount)||0}</b>
+      ${escapeHtml(r.name)}: <b>${formatDEInt(r.amount)}</b>
       <button data-rdel="${idx}" class="danger" style="padding:2px 8px; border-radius:999px; margin-left:6px">x</button>
     </span>`
   ).join("");
@@ -1670,7 +1685,7 @@ async function loadOrders(){
     
     // ✅ Discord informieren
 try {
-  await window.notifyOrderStatusChange(id, status);
+  await notifyOrderStatusChange(id, status);
 } catch (err) {
   console.warn("Discord notify failed", err);
 }
