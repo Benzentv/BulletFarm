@@ -693,7 +693,7 @@ function renderCartSummary(totals){
     return;
   }
   const chips = Array.from(totals.entries()).map(([name,v])=>
-    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${Math.round(v.amount)}</b></span>`
+    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${formatDEInt(v.amount)}</b></span>`
   ).join(" ");
 
   box.innerHTML = `
@@ -1671,7 +1671,7 @@ function renderTotalsChips(totals){
   const entries = Array.from(totals.entries()).sort((a,b)=>a[0].localeCompare(b[0]));
   if(entries.length===0) return `<span class="muted">—</span>`;
   return entries.map(([name,v]) =>
-    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${Math.round(v.amount)}</b></span>`
+    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${formatDEInt(v.amount)}</b></span>`
   ).join(" ");
 }
 
