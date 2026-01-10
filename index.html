@@ -13,8 +13,6 @@
 
   <style>
     :root{
-  --brand-title-size: 18px;
-  --brand-subtitle-size: 11px;
 
   /* === Brand Position & Farben === */
   --brand-top: 14px;
@@ -59,11 +57,11 @@
 }
 .brand{
   font-weight: 900;
-  font-size: var(--brand-title-size);
+  font-size: 18px;
   color: var(--brand-title-color);
 }
 .brandSub{
-  font-size: var(--brand-subtitle-size);
+  font-size: 11px;
   font-weight: 600;
   color: var(--brand-subtitle-color);
   opacity: 0.9;
@@ -704,11 +702,13 @@ const c = data.colors || {};
     const root = document.documentElement.style;
     // Brand subtitle color + position (optional)
     if(data.subtitleColor) root.setProperty("--brand-subtitle-color", data.subtitleColor);
+
     if(data.brandTop!=null) root.setProperty("--brand-top", `${parseInt(data.brandTop)||14}px`);
-    if(data.brandLeft!=null) root.setProperty("--brand-left",
-    );
+    if(data.brandLeft!=null) root.setProperty("--brand-left", `${parseInt(data.brandLeft)||16}px`);
     if(data.brandTitleSize!=null) root.setProperty("--brand-title-size", `${parseInt(data.brandTitleSize)||18}px`);
     if(data.brandSubtitleSize!=null) root.setProperty("--brand-subtitle-size", `${parseInt(data.brandSubtitleSize)||11}px`);
+
+    if(data.brandTop!=null) root.setProperty("--brand-top", `${parseInt(data.brandTop)||14}px`);
     if(data.brandLeft!=null) root.setProperty("--brand-left", `${parseInt(data.brandLeft)||16}px`);
 
     if(c.bg) root.setProperty("--bg", c.bg);
@@ -1378,16 +1378,7 @@ function renderAdminTheme(){
         <div style="height:10px"></div>
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
           <label class="muted">Position oben (px) <input id="tBrandTop" type="number" min="0" max="300" step="1" style="width:100%;height:44px;padding:10px" /></label>
-          <label class="muted">Position links (px) <input id="tBrandLeft"
-        </label>
-
-        <div style="height:10px"></div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px">
-          <label class="muted">Titel Größe (px) <input id="tBrandTitleSize" type="number" min="10" max="40" /></label>
-          <label class="muted">Untertitel Größe (px) <input id="tBrandSubtitleSize" type="number" min="8" max="30" /></label>
-        </div>
-
-        <label class="muted">Position links (px) <input id="tBrandLeft" type="number" min="0" max="300" step="1" style="width:100%;height:44px;padding:10px" /></label>
+          <label class="muted">Position links (px) <input id="tBrandLeft" type="number" min="0" max="300" step="1" style="width:100%;height:44px;padding:10px" /></label>
         </div>
 
         <div style="height:12px"></div>
@@ -1451,10 +1442,6 @@ function renderAdminTheme(){
     const leftPx = parseInt(document.getElementById("tBrandLeft")?.value || "16");
     if(Number.isFinite(topPx)) root.setProperty("--brand-top", `${topPx}px`);
     if(Number.isFinite(leftPx)) root.setProperty("--brand-left", `${leftPx}px`);
-    const tSize = parseInt(document.getElementById("tBrandTitleSize")?.value || "18");
-    const sSize = parseInt(document.getElementById("tBrandSubtitleSize")?.value || "11");
-    if(Number.isFinite(tSize)) root.setProperty("--brand-title-size", `${tSize}px`);
-    if(Number.isFinite(sSize)) root.setProperty("--brand-subtitle-size", `${sSize}px`);
     root.setProperty("--bg", document.getElementById("tBg").value);
     root.setProperty("--card", document.getElementById("tCard").value);
     root.setProperty("--text", document.getElementById("tText").value);
@@ -1481,8 +1468,6 @@ function renderAdminTheme(){
       subtitleColor: document.getElementById("tSubtitleColor")?.value || "#7dd3fc",
       brandTop: parseInt(document.getElementById("tBrandTop")?.value || "14") || 14,
       brandLeft: parseInt(document.getElementById("tBrandLeft")?.value || "16") || 16,
-      brandTitleSize: parseInt(document.getElementById("tBrandTitleSize")?.value || "18") || 18,
-      brandSubtitleSize: parseInt(document.getElementById("tBrandSubtitleSize")?.value || "11") || 11,
       colors: {
         ...(base.colors || {}),
         bg: document.getElementById("tBg").value,
