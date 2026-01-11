@@ -1223,57 +1223,154 @@ async function loadPublic(){
       return (hh>0) ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
     }
 
-    function renderPromoBar(){
+    function getPromoCampaigns(){
       const settings = window.__shopSettings || {};
       const promo = settings.promo || {};
-      const enabled = !!promo.enabled;
-      const endAt = promo.endAt ? new Date(promo.endAt).getTime() : null;
+      // Backward compatibility: single promo object -> campaigns[0]
+      let campaigns = Array.isArray(promo.campaigns) ? promo.campaigns : null;
+      if(!campaigns){
+        const legacyEnd = promo.endAt;
+        const legacyText = promo.text;
+        const legacyEnabled = promo.enabled;
+        if(legacyEnd || legacyText || legacyEnabled){
+          campaigns = [{
+            id: "legacy",
+            enabled: !!legacyEnabled,
+            title: legacyText || "⏰ Aktion läuft!",
+            sub: promo.sub || "Zeitlich begrenzte Aktion",
+            pill: promo.pill || "Bonus",
+            icon: promo.icon || "⏰",
+            color: promo.color || "#34d399",
+            startAt: promo.startAt || "",
+            endAt: legacyEnd || ""
+          }];
+        }else{
+          campaigns = [];
+        }
+      }
+      // normalize
+      return campaigns.map((c, idx)=>({
+        id: String(c.id || ("c"+idx)),
+        enabled: !!c.enabled,
+        title: String(c.title ?? c.text ?? "").trim(),
+        sub: String(c.sub ?? "").trim(),
+        pill: String(c.pill ?? "").trim(),
+        icon: String(c.icon ?? "").trim(),
+        color: String(c.color ?? "#34d399").trim() || "#34d399",
+        startAt: c.startAt ? String(c.startAt) : "",
+        endAt: c.endAt ? String(c.endAt) : ""
+      }));
+    }
 
-      if(!enabled || !endAt || isNaN(endAt)){
-        promoBarEl.style.display = "none";
-        promoBarEl.innerHTML = "";
+    function pickActivePromo(nowMs){
+      const settings = window.__shopSettings || {};
+      const promo = settings.promo || {};
+      const mode = promo.mode || "auto"; // auto | off
+      if(mode === "off") return null;
+
+      const campaigns = getPromoCampaigns().filter(c=>c.enabled);
+
+      const within = (c)=>{
+        const s = c.startAt ? new Date(c.startAt).getTime() : null;
+        const e = c.endAt ? new Date(c.endAt).getTime() : null;
+        if(s && !isNaN(s) && nowMs < s) return false;
+        if(e && !isNaN(e) && nowMs > e) return false;
+        // wenn weder start noch end gesetzt, trotzdem anzeigen
+        return true;
+      };
+
+      // auto: erste passende Kampagne nach Startzeit sortiert
+      const candidates = campaigns
+        .filter(within)
+        .sort((a,b)=>{
+          const sa = a.startAt ? new Date(a.startAt).getTime() : 0;
+          const sb = b.startAt ? new Date(b.startAt).getTime() : 0;
+          return sa - sb;
+        });
+
+      return candidates[0] || null;
+    }
+
+    function renderPromoBar(){
+      const box = promoBarEl;
+      const now = getNowMs();
+      const active = pickActivePromo(now);
+
+      if(!active){
+        box.style.display = "none";
+        box.innerHTML = "";
         return;
       }
 
-      // Start timers once
+      // Countdown nur wenn endAt vorhanden
+      const endAtMs = active.endAt ? new Date(active.endAt).getTime() : null;
+      const hasCountdown = !!endAtMs && !isNaN(endAtMs);
+
+      // Start timer once
       if(!__promoTimer){
         __promoTimer = setInterval(()=>{
-          const now = getNowMs();
-          const left = endAt - now;
-          if(left <= 0){
-            promoBarEl.style.display = "none";
-            promoBarEl.innerHTML = "";
+          const now2 = getNowMs();
+          const active2 = pickActivePromo(now2);
+          if(!active2){
+            box.style.display = "none";
+            box.innerHTML = "";
             return;
           }
-          const countEl = promoBarEl.querySelector("[data-promo-count]");
-          if(countEl) countEl.textContent = formatCountdown(left);
+          const end2 = active2.endAt ? new Date(active2.endAt).getTime() : null;
+          const countEl = box.querySelector("[data-promo-count]");
+          if(countEl && end2 && !isNaN(end2)){
+            const left = end2 - now2;
+            if(left <= 0){
+              // abgelaufen -> neu rendern (evtl. nächste Aktion)
+              renderPromoBar();
+              return;
+            }
+            countEl.textContent = formatCountdown(left);
+          }else if(countEl){
+            countEl.textContent = "";
+          }
         }, 250);
       }
 
-      const now = getNowMs();
-      const left = endAt - now;
-      if(left <= 0){
-        promoBarEl.style.display = "none";
-        promoBarEl.innerHTML = "";
-        return;
+      const title = (active.title || "Aktion").trim();
+      const sub = active.sub || "Zeitlich begrenzte Aktion";
+      const pill = active.pill || "";
+      const icon = active.icon || "";
+      const accent = active.color || "#34d399";
+
+      let countHtml = "";
+      if(hasCountdown){
+        const left = endAtMs - now;
+        if(left <= 0){
+          // abgelaufen -> evtl. nächste Aktion
+          box.style.display = "none";
+          box.innerHTML = "";
+          return;
+        }
+        countHtml = `<div class="count" data-promo-count>${formatCountdown(left)}</div>`;
+      }else{
+        countHtml = `<div class="count" data-promo-count style="opacity:.0; width:0; padding:0; border:0"></div>`;
       }
 
-      const title = (promo.text || "⏰ Aktion läuft!").trim();
-      const small = promo.sub || "Zeitlich begrenzte Aktion";
-      const pill = promo.pill || "Bonus";
+      // Styling via inline vars
+      box.style.borderColor = `${accent}55`;
+      box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
 
-      promoBarEl.innerHTML = `
+      box.innerHTML = `
         <div class="left">
-          <div class="title">${escapeHtml(title)}</div>
-          <div class="sub">${escapeHtml(small)}</div>
+          <div class="title">${escapeHtml((icon ? icon + " " : "") + title)}</div>
+          <div class="sub">${escapeHtml(sub)}</div>
         </div>
         <div class="right">
-          <div class="pill">${escapeHtml(pill)}</div>
-          <div class="count" data-promo-count>${formatCountdown(left)}</div>
+          ${pill ? `<div class="pill">${escapeHtml(pill)}</div>` : ``}
+          ${countHtml}
         </div>
       `;
-      promoBarEl.style.display = "";
+      box.style.display = "";
     }
+
+    // Expose so global saveShopSettingsPatch can trigger a refresh
+    window.__renderPromoBar = renderPromoBar;
 
     async function initPromo(){
       await syncServerTime();
@@ -1286,6 +1383,8 @@ async function loadPublic(){
         }, 30_000);
       }
     }
+
+    window.__initPromo = initPromo;
 
     async function saveShopSettingsPatch(patchObj, toastTitle="Settings"){
       const next = Object.assign({}, window.__shopSettings || {}, patchObj);
@@ -2939,12 +3038,11 @@ function renderAdminNotify(){
 }
 
 
-/* ========= Admin: Aktionen / Promo Banner ========= */
+/* ========= Admin: Aktionen / Promo Banner (Planung + Auto-Wechsel + Farbe/Icon) ========= */
 function renderAdminPromo(){
   const el = document.getElementById("panelPromo");
   const promo = (window.__shopSettings && window.__shopSettings.promo) ? window.__shopSettings.promo : {};
 
-  // datetime-local erwartet "YYYY-MM-DDTHH:MM"
   const toLocalInput = (iso)=>{
     if(!iso) return "";
     const d = new Date(iso);
@@ -2952,103 +3050,326 @@ function renderAdminPromo(){
     const pad = (n)=>String(n).padStart(2,"0");
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
+  const fromLocalInput = (v)=>{
+    if(!v) return "";
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? "" : d.toISOString();
+  };
+  const uid = ()=>Math.random().toString(16).slice(2) + Date.now().toString(16);
+
+  // Kampagnen laden (inkl. Legacy Migration)
+  const legacy = (promo.endAt || promo.text || promo.enabled) && !Array.isArray(promo.campaigns);
+  let campaigns = Array.isArray(promo.campaigns) ? promo.campaigns.slice() : [];
+  if(legacy){
+    campaigns = [{
+      id: "legacy",
+      enabled: !!promo.enabled,
+      title: promo.text || "⏰ 10 % Bonus bis 23:59",
+      sub: promo.sub || "Zeitlich begrenzte Aktion",
+      pill: promo.pill || "Bonus",
+      icon: promo.icon || "⏰",
+      color: promo.color || "#34d399",
+      startAt: promo.startAt || "",
+      endAt: promo.endAt || ""
+    }];
+  }
+  if(!campaigns.length){
+    campaigns = [{
+      id: uid(),
+      enabled: true,
+      title: "⏰ 10 % Bonus bis 23:59",
+      sub: "Zeitlich begrenzte Aktion",
+      pill: "Bonus",
+      icon: "⏰",
+      color: "#34d399",
+      startAt: "",
+      endAt: ""
+    }];
+  }
+
+  const mode = promo.mode || "auto";
 
   el.innerHTML = `
     <div class="card" style="margin-top:10px">
-      <div class="head"><b>⏰ Aktionen Banner</b></div>
+      <div class="head"><b>Aktionen (Planung)</b></div>
       <div class="body">
-        <div class="muted" style="font-size:12px">
-          Banner wird im Shop oberhalb der Produkte angezeigt. Countdown nutzt Serverzeit (Edge Function).
+        <div class="muted" style="font-size:12px; margin-bottom:10px">
+          Lege mehrere Aktionen an (heute / morgen / Wochenende). Der Shop zeigt automatisch die Aktion, die gerade aktiv ist (Serverzeit).
         </div>
 
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <div class="muted" style="font-size:12px; width:100%">Modus</div>
+          <select id="promoMode" style="min-width:220px">
+            <option value="auto">Auto (wechseln nach Zeitplan)</option>
+            <option value="off">Aus</option>
+          </select>
+
+          <div style="flex:1"></div>
+
+          <button id="promoAdd" class="primary">+ Aktion</button>
+          <button id="promoDel" class="danger">Aktion löschen</button>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="muted" style="font-size:12px; margin-bottom:6px">Aktion auswählen</div>
+        <select id="promoSel" style="width:100%"></select>
+
+        <div style="height:12px"></div>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <label class="chip" style="cursor:pointer">
+            <input type="checkbox" id="promoEnabled2" style="margin-right:6px" />
+            Aktiv
+          </label>
+
+          <div class="chip" style="gap:10px">
+            <span class="muted" style="font-size:12px">Icon</span>
+            <input id="promoIcon" placeholder="⏰" style="width:80px; text-align:center" />
+          </div>
+
+          <div class="chip" style="gap:10px">
+            <span class="muted" style="font-size:12px">Farbe</span>
+            <input id="promoColor" type="color" value="#34d399" style="height:34px; padding:2px 6px" />
+          </div>
+
+          <button id="presetToday" class="">Heute</button>
+          <button id="presetTomorrow" class="">Morgen</button>
+          <button id="presetWeekend" class="">Wochenende</button>
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="muted" style="font-size:12px; margin-bottom:6px">Titel (Banner)</div>
+        <input id="promoTitle2" placeholder="⏰ 10 % Bonus bis 23:59" />
+
         <div style="height:10px"></div>
 
-        <label style="display:flex; align-items:center; gap:8px">
-          <input type="checkbox" id="promoEnabled" />
-          <span>Banner aktiv</span>
-        </label>
-
-        <div style="height:10px"></div>
-
-        <div class="muted" style="font-size:12px; margin-bottom:6px">Banner Text (Titel)</div>
-        <input id="promoText" placeholder="⏰ 10 % Bonus bis 23:59" />
-
-        <div style="height:10px"></div>
-
-        <div class="muted" style="font-size:12px; margin-bottom:6px">Unterzeile (optional)</div>
-        <input id="promoSub" placeholder="Zeitlich begrenzte Aktion" />
+        <div class="muted" style="font-size:12px; margin-bottom:6px">Untertitel (optional)</div>
+        <input id="promoSub2" placeholder="Zeitlich begrenzte Aktion" />
 
         <div style="height:10px"></div>
 
         <div class="muted" style="font-size:12px; margin-bottom:6px">Pill rechts (optional)</div>
-        <input id="promoPill" placeholder="Bonus" />
+        <input id="promoPill2" placeholder="Bonus" />
 
         <div style="height:10px"></div>
 
-        <div class="muted" style="font-size:12px; margin-bottom:6px">Endzeit (Countdown)</div>
-        <input id="promoEndAt" type="datetime-local" />
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <div style="flex:1; min-width:220px">
+            <div class="muted" style="font-size:12px; margin-bottom:6px">Startzeit (optional)</div>
+            <input id="promoStartAt2" type="datetime-local" />
+          </div>
+          <div style="flex:1; min-width:220px">
+            <div class="muted" style="font-size:12px; margin-bottom:6px">Endzeit (Countdown, optional)</div>
+            <input id="promoEndAt2" type="datetime-local" />
+          </div>
+        </div>
 
         <div style="height:12px"></div>
 
-        <button class="primary" id="promoSave">Speichern</button>
-        <button class="" id="promoPreview" style="margin-left:8px">Vorschau anzeigen</button>
+        <button class="primary" id="promoSave2">Speichern</button>
+        <button class="" id="promoPreview2" style="margin-left:8px">Vorschau</button>
 
         <div style="height:12px"></div>
         <div class="muted" style="font-size:12px">Live Vorschau</div>
         <div style="height:8px"></div>
-        <div class="promoBar" id="promoPreviewBox" style="display:none"></div>
+        <div class="promoBar" id="promoPreviewBox2" style="display:none"></div>
       </div>
     </div>
   `;
 
-  // init values
-  document.getElementById("promoEnabled").checked = !!promo.enabled;
-  document.getElementById("promoText").value = promo.text || "⏰ 10 % Bonus bis 23:59";
-  document.getElementById("promoSub").value = promo.sub || "Zeitlich begrenzte Aktion";
-  document.getElementById("promoPill").value = promo.pill || "Bonus";
-  document.getElementById("promoEndAt").value = toLocalInput(promo.endAt);
+  const selEl = document.getElementById("promoSel");
+  const modeEl = document.getElementById("promoMode");
+  modeEl.value = mode;
+
+  const normalize = ()=>{
+    campaigns = (campaigns||[]).map((c, idx)=>({
+      id: String(c.id || ("c"+idx)),
+      enabled: !!c.enabled,
+      title: String(c.title ?? c.text ?? "").trim(),
+      sub: String(c.sub ?? "").trim(),
+      pill: String(c.pill ?? "").trim(),
+      icon: String(c.icon ?? "").trim(),
+      color: String(c.color ?? "#34d399").trim() || "#34d399",
+      startAt: c.startAt ? String(c.startAt) : "",
+      endAt: c.endAt ? String(c.endAt) : ""
+    }));
+  };
+
+  const renderSelect = ()=>{
+    normalize();
+    selEl.innerHTML = "";
+    campaigns.forEach((c,i)=>{
+      const label = `${c.enabled ? "✅" : "⛔"} ${c.icon ? c.icon+" " : ""}${c.title || "Aktion"}`
+        .slice(0, 60);
+      const opt = new Option(label, c.id);
+      opt.setAttribute("data-idx", String(i));
+      selEl.appendChild(opt);
+    });
+    if(!selEl.value && campaigns[0]) selEl.value = campaigns[0].id;
+  };
+
+  const getSelectedIndex = ()=>{
+    const id = selEl.value;
+    return campaigns.findIndex(c=>String(c.id)===String(id));
+  };
+
+  const fillForm = ()=>{
+    const i = getSelectedIndex();
+    const c = campaigns[i] || campaigns[0];
+    if(!c) return;
+
+    document.getElementById("promoEnabled2").checked = !!c.enabled;
+    document.getElementById("promoIcon").value = c.icon || "";
+    document.getElementById("promoColor").value = c.color || "#34d399";
+    document.getElementById("promoTitle2").value = c.title || "";
+    document.getElementById("promoSub2").value = c.sub || "";
+    document.getElementById("promoPill2").value = c.pill || "";
+    document.getElementById("promoStartAt2").value = toLocalInput(c.startAt);
+    document.getElementById("promoEndAt2").value = toLocalInput(c.endAt);
+  };
+
+  const readFormIntoCampaign = ()=>{
+    const i = getSelectedIndex();
+    if(i < 0) return;
+    const c = campaigns[i];
+
+    c.enabled = document.getElementById("promoEnabled2").checked;
+    c.icon = (document.getElementById("promoIcon").value||"").trim();
+    c.color = (document.getElementById("promoColor").value||"").trim() || "#34d399";
+    c.title = (document.getElementById("promoTitle2").value||"").trim();
+    c.sub = (document.getElementById("promoSub2").value||"").trim();
+    c.pill = (document.getElementById("promoPill2").value||"").trim();
+    c.startAt = fromLocalInput(document.getElementById("promoStartAt2").value);
+    c.endAt = fromLocalInput(document.getElementById("promoEndAt2").value);
+  };
 
   const renderPreview = ()=>{
-    const box = document.getElementById("promoPreviewBox");
-    const enabled = document.getElementById("promoEnabled").checked;
-    const endVal = document.getElementById("promoEndAt").value;
-    const endAt = endVal ? new Date(endVal).toISOString() : "";
-    if(!enabled || !endAt){
+    readFormIntoCampaign();
+    const box = document.getElementById("promoPreviewBox2");
+    const i = getSelectedIndex();
+    const c = campaigns[i];
+    if(!c || !c.enabled){
       box.style.display = "none";
       box.innerHTML = "";
       return;
     }
+
+    const endMs = c.endAt ? new Date(c.endAt).getTime() : null;
+    const hasCountdown = endMs && !isNaN(endMs);
+
+    box.style.borderColor = `${c.color}55`;
+    box.style.background = `linear-gradient(90deg, ${c.color}22, rgba(20,25,35,.35))`;
+
     box.innerHTML = `
       <div class="left">
-        <div class="title">${escapeHtml((document.getElementById("promoText").value||"").trim())}</div>
-        <div class="sub">${escapeHtml((document.getElementById("promoSub").value||"").trim())}</div>
+        <div class="title">${escapeHtml((c.icon ? c.icon + " " : "") + (c.title || ""))}</div>
+        <div class="sub">${escapeHtml(c.sub || "")}</div>
       </div>
       <div class="right">
-        <div class="pill">${escapeHtml((document.getElementById("promoPill").value||"").trim())}</div>
-        <div class="count">00:00</div>
+        ${c.pill ? `<div class="pill">${escapeHtml(c.pill)}</div>` : ``}
+        ${hasCountdown ? `<div class="count">00:00</div>` : ``}
       </div>
     `;
     box.style.display = "";
   };
 
-  document.getElementById("promoPreview").onclick = renderPreview;
+  // Presets
+  const setPreset = (which)=>{
+    const now = new Date();
+    const startOfDay = (d)=>new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+    const endOfDay = (d)=>new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 0, 0);
 
-  document.getElementById("promoSave").onclick = async ()=>{
-    const enabled = document.getElementById("promoEnabled").checked;
-    const text = (document.getElementById("promoText").value||"").trim();
-    const sub = (document.getElementById("promoSub").value||"").trim();
-    const pill = (document.getElementById("promoPill").value||"").trim();
-    const endVal = document.getElementById("promoEndAt").value;
-    const endAt = endVal ? new Date(endVal).toISOString() : "";
+    let s=null,e=null;
+    if(which==="today"){
+      s = now;
+      e = endOfDay(now);
+    }else if(which==="tomorrow"){
+      const d = new Date(now.getTime() + 24*60*60*1000);
+      s = startOfDay(d);
+      e = endOfDay(d);
+    }else if(which==="weekend"){
+      // nächster Samstag
+      const day = now.getDay(); // 0=So
+      const daysToSat = (6 - day + 7) % 7 || 7; // wenn heute Sa -> nächster Sa
+      const sat = new Date(now.getTime() + daysToSat*24*60*60*1000);
+      const sun = new Date(sat.getTime() + 1*24*60*60*1000);
+      s = startOfDay(sat);
+      e = endOfDay(sun);
+    }
 
-    await saveShopSettingsPatch({
-      promo: { enabled, text, sub, pill, endAt }
-    }, "Aktionen");
-
-    try{ await initPromo(); }catch(_){}
+    document.getElementById("promoStartAt2").value = s ? toLocalInput(s.toISOString()) : "";
+    document.getElementById("promoEndAt2").value = e ? toLocalInput(e.toISOString()) : "";
     renderPreview();
   };
+
+  // events
+  renderSelect();
+  fillForm();
+  renderPreview();
+
+  selEl.onchange = ()=>{ fillForm(); renderPreview(); };
+
+  document.getElementById("promoAdd").onclick = ()=>{
+    readFormIntoCampaign();
+    const c = {
+      id: uid(),
+      enabled: true,
+      title: "Neue Aktion",
+      sub: "Zeitlich begrenzte Aktion",
+      pill: "Bonus",
+      icon: "🔥",
+      color: "#34d399",
+      startAt: "",
+      endAt: ""
+    };
+    campaigns.unshift(c);
+    renderSelect();
+    selEl.value = c.id;
+    fillForm();
+    renderPreview();
+  };
+
+  document.getElementById("promoDel").onclick = ()=>{
+    const i = getSelectedIndex();
+    if(i<0) return;
+    const ok = confirm("Diese Aktion wirklich löschen?");
+    if(!ok) return;
+    campaigns.splice(i,1);
+    if(!campaigns.length){
+      campaigns.push({ id: uid(), enabled:false, title:"Neue Aktion", sub:"", pill:"", icon:"", color:"#34d399", startAt:"", endAt:"" });
+    }
+    renderSelect();
+    fillForm();
+    renderPreview();
+  };
+
+  document.getElementById("presetToday").onclick = ()=>setPreset("today");
+  document.getElementById("presetTomorrow").onclick = ()=>setPreset("tomorrow");
+  document.getElementById("presetWeekend").onclick = ()=>setPreset("weekend");
+
+  document.getElementById("promoPreview2").onclick = renderPreview;
+
+  document.getElementById("promoSave2").onclick = async ()=>{
+    readFormIntoCampaign();
+    const nextPromo = {
+      ...(promo || {}),
+      mode: modeEl.value || "auto",
+      // optional: legacy fields aktualisieren (zeigt aktuellste Aktion an, falls jemand alten Code nutzt)
+      enabled: true,
+      campaigns: campaigns
+    };
+
+    await saveShopSettingsPatch({ promo: nextPromo }, "Aktionen");
+
+    // live im Shop updaten
+    try{ await (window.__initPromo ? window.__initPromo() : initPromo()); }catch(_){}
+    renderPreview();
+    showToast?.("Aktionen", "Gespeichert ✅", { duration: 1400 });
+  };
 }
+
 
 
 /* ========= Hook: nach Start Auth Listener ========= */
