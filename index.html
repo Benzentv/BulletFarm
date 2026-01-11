@@ -2509,6 +2509,21 @@ function renderProductsTable(){
       const fromId = dragId || (()=>{
         try{ return e.dataTransfer.getData("text/plain"); }catch(_){ return null; }
       })();
+
+/* ===== Promo Ampel Logik (global, für Admin-Preview & Shop) =====
+   > 240 min => Grün, 240–60 min => Gelb, < 60 min => Rot + Pulsieren
+*/
+function promoAccentFromLeftMs(leftMs){
+  if(leftMs == null || !isFinite(leftMs)){
+    return { accent: null, urgent: false };
+  }
+  const leftMin = leftMs / 60000;
+  if(leftMin > 240) return { accent: "#34d399", urgent: false }; // 🟢
+  if(leftMin >= 60) return { accent: "#fbbf24", urgent: false }; // 🟡
+  return { accent: "#fb7185", urgent: true };                    // 🔴
+}
+
+
       const toId = tr.getAttribute("data-id");
       if(!fromId || !toId || fromId===toId) return;
 
