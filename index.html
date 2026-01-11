@@ -448,6 +448,32 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     padding: 10px 12px;
   }
 
+
+/* Shop Tabs (Produkte / Bundles) */
+.shopTabs{
+  display:flex;
+  gap:6px;
+  padding:4px;
+  border:1px solid rgba(255,255,255,.10);
+  background: rgba(0,0,0,.18);
+  border-radius:999px;
+}
+.shopTab{
+  cursor:pointer;
+  border:0;
+  background: transparent;
+  color: var(--muted);
+  font-weight:700;
+  font-size:12px;
+  padding:6px 10px;
+  border-radius:999px;
+}
+.shopTab.active{
+  color: #0b0f14;
+  background: rgba(52,211,153,.95);
+  box-shadow: 0 6px 18px rgba(0,0,0,.25);
+}
+.shopTab:focus{ outline: 2px solid rgba(52,211,153,.6); outline-offset:2px; }
 </style>
 </head>
 <body>
@@ -477,7 +503,14 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     <!-- SHOP -->
     <section class="card" id="shopCard">
       <div class="head">
-        <b id="shopHeading">Produkte</b>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap">
+          <b id="shopHeading">Produkte</b>
+          <div id="shopTabs" class="shopTabs" role="tablist" aria-label="Shop Ansicht">
+            <button class="shopTab active" data-view="products" role="tab" aria-selected="true">Produkte</button>
+            <button class="shopTab" data-view="bundles" role="tab" aria-selected="false">Bundles</button>
+            <button class="shopTab" data-view="all" role="tab" aria-selected="false">Alle</button>
+          </div>
+        </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <select id="catFilter"></select>
           <input id="searchBox" placeholder="Suchen…" />
@@ -1031,11 +1064,43 @@ function getVariants(p){
   return [{ name: "Standard", multiplier: 1 }];
 }
 
+
+/* ========= Shop View Tabs ========= */
+window.__shopView = window.__shopView || "products"; // products | bundles | all
+
+function updateShopTabs(){
+  const wrap = document.getElementById("shopTabs");
+  if(!wrap) return;
+  const v = window.__shopView || "products";
+  wrap.querySelectorAll(".shopTab").forEach(btn=>{
+    const on = btn.dataset.view===v;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  const heading = document.getElementById("shopHeading");
+  if(heading){
+    if(window.__shopMode==="fav") heading.textContent = "⭐ Favoriten";
+    else if(v==="bundles") heading.textContent = "🧩 Bundles";
+    else heading.textContent = "Produkte";
+  }
+}
+
+function bindShopTabs(){
+  const wrap = document.getElementById("shopTabs");
+  if(!wrap) return;
+  wrap.onclick = (e)=>{
+    const btn = e.target.closest(".shopTab");
+    if(!btn) return;
+    window.__shopView = btn.dataset.view || "products";
+    updateShopTabs();
+    renderProducts();
+  };
+  updateShopTabs();
+}
 function renderProducts(){
   const list = document.getElementById("productList");
   list.innerHTML = "";
-  const heading = document.getElementById("shopHeading");
-  if(heading) heading.textContent = (window.__shopMode==="fav") ? "⭐ Favoriten" : "Produkte";
+  updateShopTabs();
 
   const filter = document.getElementById("catFilter").value;
   const q = (document.getElementById("searchBox").value || "").trim().toLowerCase();
@@ -1047,12 +1112,15 @@ function renderProducts(){
   if(q) shown = shown.filter(p=>String(p.name||"").toLowerCase().includes(q));
 
 
-  // Bundles separat darstellen (oben), normale Produkte darunter
+  // Bundles / Produkte trennen
   const bundles = shown.filter(p=>isBundleProduct(p));
   const normals = shown.filter(p=>!isBundleProduct(p));
 
-  if(shown.length===0){
-    list.innerHTML = `<div class="muted">${window.__shopMode==="fav" ? "Noch keine Favoriten. Tippe ☆ um Produkte zu merken." : "Keine Produkte gefunden."}</div>`;
+
+  const view = window.__shopView || "products";
+  const effectiveLen = (view==="bundles") ? bundles.length : (view==="products") ? normals.length : shown.length;
+  if(effectiveLen===0){
+    list.innerHTML = `<div class="muted">${window.__shopMode==="fav" ? "Keine Favoriten gefunden." : "Keine Produkte gefunden."}</div>`;
     return;
   }
 
@@ -1115,9 +1183,10 @@ function renderProducts(){
   };
 
 
-  const hasBundles = bundles.length > 0;
+  // Render je nach Tab
+  const view = window.__shopView || "products";
 
-  if(hasBundles){
+  if(view==="bundles"){
     const h = document.createElement("div");
     h.className = "bundleSectionTitle";
     h.textContent = "🧩 Bundles";
@@ -1129,31 +1198,33 @@ function renderProducts(){
     list.appendChild(hint);
 
     for(const p of bundles) appendCard(p);
+  }else if(view==="all"){
+    const hasBundles = bundles.length > 0;
+    if(hasBundles){
+      const h = document.createElement("div");
+      h.className = "bundleSectionTitle";
+      h.textContent = "🧩 Bundles";
+      list.appendChild(h);
+
+      const hint = document.createElement("div");
+      hint.className = "bundleHint";
+      hint.textContent = "Bundles enthalten mehrere Produkte – Ressourcen sind summiert.";
+      list.appendChild(hint);
+
+      for(const p of bundles) appendCard(p);
+
+      const h2 = document.createElement("div");
+      h2.className = "bundleSectionTitle";
+      h2.textContent = (window.__shopMode==="fav") ? "⭐ Favoriten" : "Produkte";
+      list.appendChild(h2);
+    }
+    const mainArr = hasBundles ? normals : shown;
+    for(const p of mainArr) appendCard(p);
+  }else{
+    // products
+    for(const p of normals) appendCard(p);
   }
 
-  const mainArr = hasBundles ? normals : shown;
-  if(hasBundles){
-    const h2 = document.createElement("div");
-    h2.className = "bundleSectionTitle";
-    h2.textContent = (window.__shopMode==="fav") ? "⭐ Favoriten" : "Produkte";
-    list.appendChild(h2);
-  }
-  for(const p of mainArr) appendCard(p);
-
-  list.querySelectorAll("[data-add]").forEach(b=>{
-    b.onclick = ()=>{
-      const pid = b.getAttribute("data-add");
-      const sel = list.querySelector(`.variantSel[data-vid="${pid}"]`);
-      if(sel){
-        const opt = sel.options[sel.selectedIndex];
-        const variantName = opt?.getAttribute("data-n") || opt?.textContent || "Standard";
-        const variantMultiplier = Number(opt?.getAttribute("data-m") || "1") || 1;
-        addToCartUX(b, pid, variantName, variantMultiplier);
-      }else{
-        addToCartUX(b, pid, "Standard", 1);
-      }
-    };
-  });
   list.querySelectorAll("[data-fav]").forEach(b=>{
     b.onclick = ()=>toggleFav(b.getAttribute("data-fav"));
   });
@@ -3590,6 +3661,7 @@ window.addEventListener("DOMContentLoaded", async ()=>{
   saveCart();
   renderCart();
   setTab("shop");
+  bindShopTabs();
   showBanner("JS läuft ✅ — initialisiere…");
 
   if(!window.supabase){
