@@ -829,15 +829,10 @@ async function duplicateProduct(productId){
       if(!auto){
         return base || null;
       }
-      const lines = sel.map(p=>`• ${String(p.name||"").trim()}`).filter(Boolean).join("
-");
-      const head = "🧩 Dieses Bundle enthält:
-
-";
+      const lines = sel.map(p=>`• ${String(p.name||"").trim()}`).filter(Boolean).join("\n");
+      const head = "🧩 Dieses Bundle enthält:\n\n";
       const autoText = head + lines;
-      return (base ? (base + "
-
-" + autoText) : autoText) || null;
+      return (base ? (base + "\n\n" + autoText) : autoText) || null;
     })()
   }
 };
