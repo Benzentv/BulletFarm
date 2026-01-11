@@ -813,7 +813,16 @@ function openProductPreview(productId){
     </div>
   ` : "";
 
-  const descHtml = renderDescriptionHtml(p.description);
+  // Verhindert doppelte Anzeige: Bundle-Liste wird schon als bundleBox gerendert.
+  // Falls die Beschreibung zusätzlich die Auto-Liste "🧩 Dieses Bundle enthält:" enthält, schneiden wir sie in der Vorschau ab.
+  let __descText = p.description;
+  if(isB && typeof __descText === "string"){
+    const __idx = __descText.indexOf("🧩 Dieses Bundle enthält:");
+    if(__idx !== -1){
+      __descText = __descText.slice(0, __idx).trim();
+    }
+  }
+  const descHtml = renderDescriptionHtml(__descText);
 
   body.innerHTML = `
     <div class="prod" style="max-width:520px; margin:0 auto">
