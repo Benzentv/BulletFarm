@@ -389,6 +389,17 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     white-space:nowrap;
   }
 
+
+  /* Promo: Ampel-Logik / Pulsieren bei < 60 Min */
+  .promoBar.promo-urgent{
+    animation: promoPulse 1.05s ease-in-out infinite;
+  }
+  @keyframes promoPulse{
+    0%   { transform: scale(1);   filter: brightness(1); }
+    50%  { transform: scale(1.015); filter: brightness(1.12); }
+    100% { transform: scale(1);   filter: brightness(1); }
+  }
+
 </style>
 </head>
 <body>
@@ -1223,6 +1234,20 @@ async function loadPublic(){
       return (hh>0) ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
     }
 
+
+    // Ampel-Farblogik nach Restzeit:
+    // > 240 min => Grün, 240–60 min => Gelb, < 60 min => Rot + Pulsieren
+    function promoAccentFromLeftMs(leftMs){
+      if(leftMs == null || !isFinite(leftMs)){
+        return { accent: null, urgent: false };
+      }
+      const leftMin = leftMs / 60000;
+
+      if(leftMin > 240) return { accent: "#34d399", urgent: false }; // 🟢
+      if(leftMin >= 60) return { accent: "#fbbf24", urgent: false }; // 🟡
+      return { accent: "#fb7185", urgent: true };                    // 🔴
+    }
+
     function getPromoCampaigns(){
       const settings = window.__shopSettings || {};
       const promo = settings.promo || {};
@@ -1334,8 +1359,21 @@ async function loadPublic(){
               return;
             }
             countEl.textContent = formatCountdown(left);
+
+            // Ampel-Farbe + Puls live aktualisieren
+            const baseAccent2 = active2.color || "#34d399";
+            const a2 = promoAccentFromLeftMs(left);
+            const accent2 = a2.accent || baseAccent2;
+            box.style.borderColor = `${accent2}55`;
+            box.style.background = `linear-gradient(90deg, ${accent2}22, rgba(20,25,35,.35))`;
+            box.classList.toggle("promo-urgent", !!a2.urgent);
           }else if(countEl){
             countEl.textContent = "";
+            // Kein Countdown -> Admin-Farbe nutzen, kein Puls
+            const baseAccent2 = active2.color || "#34d399";
+            box.style.borderColor = `${baseAccent2}55`;
+            box.style.background = `linear-gradient(90deg, ${baseAccent2}22, rgba(20,25,35,.35))`;
+            box.classList.remove("promo-urgent");
           }
         }, 250);
       }
@@ -1344,11 +1382,16 @@ async function loadPublic(){
       const sub = active.sub || "Zeitlich begrenzte Aktion";
       const pill = active.pill || "";
       const icon = active.icon || "";
-      const accent = active.color || "#34d399";
+      const baseAccent = active.color || "#34d399";
+
+      // Restzeit bestimmen (nur wenn Countdown vorhanden)
+      const leftMs = hasCountdown ? (endAtMs - now) : null;
+      const a = promoAccentFromLeftMs(leftMs);
+      const accent = a.accent || baseAccent;
 
       let countHtml = "";
       if(hasCountdown){
-        const left = endAtMs - now;
+        const left = leftMs;
         if(left <= 0){
           // abgelaufen -> evtl. nächste Aktion
           box.style.display = "none";
@@ -1363,6 +1406,9 @@ async function loadPublic(){
       // Styling via inline vars
       box.style.borderColor = `${accent}55`;
       box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
+
+      // Pulsieren bei < 60 Minuten
+      box.classList.toggle(\"promo-urgent\", !!a.urgent);
 
       box.innerHTML = `
         <div class="left">
