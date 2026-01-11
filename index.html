@@ -847,6 +847,72 @@ async function duplicateProduct(productId){
   showToast?.("Bundle erstellt", payload.name, { duration: 1800 });
 }
 
+// ===== Bundle-Builder: erstellt Bundle aus ausgewählten Produkten =====
+async function createBundleFromSelection(selectedIds, bundleMeta){
+  try{
+    const ids = Array.isArray(selectedIds) ? selectedIds.map(String) : [];
+    if(ids.length===0){ alert("Bitte mindestens 1 Produkt auswählen."); return; }
+
+    // Produkte auflösen
+    const selectedProducts = ids.map(id=>products.find(p=>String(p.id)===String(id))).filter(Boolean);
+    if(selectedProducts.length===0){ alert("Produkte nicht gefunden (bitte Shop neu laden)."); return; }
+
+    // Ressourcen summieren (name+amount; Farbe: erste gefundene)
+    const map = new Map();
+    for(const p of selectedProducts){
+      const res = Array.isArray(p.resources) ? p.resources : [];
+      for(const r of res){
+        const name = String(r?.name||"").trim();
+        const amt = Number(r?.amount||0);
+        if(!name || !Number.isFinite(amt) || amt===0) continue;
+        if(!map.has(name)){
+          map.set(name, { name, amount: 0, color: r?.color || "#34d399" });
+        }
+        map.get(name).amount += amt;
+      }
+    }
+    const resources = Array.from(map.values()).map(r=>({ ...r, amount: Math.round(r.amount) }))
+      .filter(r=>Number.isFinite(r.amount) && r.amount>0);
+
+    // Beschreibung: optional + Auto-Liste (Text)
+    const base = String(bundleMeta?.description || "").trim();
+    const auto = !!bundleMeta?.auto_list;
+    let autoText = "";
+    if(auto){
+      const head = "🧩 Dieses Bundle enthält:\n\n";
+      const lines = selectedProducts.map(p=>`• ${String(p.name||"Produkt").trim()}`).join("\n");
+      autoText = head + lines;
+    }
+    const description = (base && autoText) ? (base + "\n\n" + autoText) : (base || autoText || "");
+
+    const payload = {
+      name: String(bundleMeta?.name||"Bundle").trim() || "Bundle",
+      category_id: bundleMeta?.category_id || null,
+      image_url: bundleMeta?.image_url || null,
+      resources,
+      variants: [],      // Bundle: keine Varianten
+      badges: [],
+      is_bundle: true,
+      bundle_items: ids,
+      description: description || null
+    };
+
+    const r = await sb.from("products").insert(payload);
+    if(r.error){
+      console.error(r.error);
+      alert("Bundle erstellen fehlgeschlagen (RLS? / Spalten fehlen?)");
+      return;
+    }
+    await loadPublic();
+    renderProducts();
+    try{ renderAdminProducts(); }catch(_e){}
+    showToast?.("Bundle erstellt", payload.name, { duration: 1800 });
+  }catch(err){
+    console.error(err);
+    alert("Bundle erstellen fehlgeschlagen (Console prüfen).");
+  }
+}
+
 
 /* ========= State ========= */
 let categories = [];
