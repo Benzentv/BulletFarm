@@ -460,7 +460,22 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
 
 <div class="muted" id="adminNote" style="margin-top:12px; font-size:12px"></div>
 
+  
+<!-- PREVIEW MODAL (Shop 1:1) -->
+<div class="modalBg" id="previewBg">
+  <div class="modal" style="width:min(720px,100%);">
+    <div class="modalHead">
+      <div><b>👁️ Vorschau (Shop)</b></div>
+      <button id="btnClosePreview">✖</button>
+    </div>
+    <div class="modalBody">
+      <div class="muted" style="font-size:12px; margin-bottom:10px">So sieht das Produkt im Shop aus (1:1 Karte).</div>
+      <div id="previewMount"></div>
+    </div>
   </div>
+</div>
+
+</div>
 </div>
 
 <script>
@@ -568,6 +583,51 @@ const BADGE_OPTIONS = [
   { key: "sale20",  label: "💸 20 % Rabatt" },
   { key: "sale50",  label: "💸 50 % Rabatt" },
 ];
+/* ========= Admin Presets (Ressourcen/Bundle) ========= */
+const DEFAULT_ADMIN_PRESETS = [
+  {
+    id: "std_deadcoins",
+    name: "Standard Deadcoins",
+    resources: [{ name:"Deadcoins", amount: 5000, color:"#7dd3fc" }],
+    variants: [{ name:"Standard", multiplier: 1 }],
+    badges: []
+  },
+  {
+    id: "bundle_template",
+    name: "Bundle (Template)",
+    resources: [],
+    variants: [{ name:"Standard", multiplier: 1 }],
+    badges: ["sale20"]
+  }
+];
+
+function getAdminPresets(){
+  const s = window.__shopSettings || {};
+  const arr = Array.isArray(s.adminPresets) ? s.adminPresets : [];
+  // merge defaults (by id) + user presets
+  const byId = new Map();
+  DEFAULT_ADMIN_PRESETS.forEach(p=>byId.set(p.id, p));
+  arr.forEach(p=>{ if(p && p.id) byId.set(p.id, p); });
+  return Array.from(byId.values());
+}
+
+async function saveAdminPresets(presets){
+  if(!sb) return;
+  const safe = (Array.isArray(presets)?presets:[]).map(p=>({
+    id: String(p.id||"").trim() || ("p_"+Math.random().toString(16).slice(2)),
+    name: String(p.name||"Preset").trim() || "Preset",
+    resources: Array.isArray(p.resources) ? p.resources : [],
+    variants: Array.isArray(p.variants) && p.variants.length ? p.variants : [{name:"Standard", multiplier:1}],
+    badges: normalizeBadges(p.badges)
+  }));
+  const nextSettings = Object.assign({}, window.__shopSettings || {}, { adminPresets: safe });
+  const r = await sb.from("shop_settings").upsert({ id: 1, data: nextSettings });
+  if(r.error){ console.warn(r.error); showToast("Presets", "Speichern fehlgeschlagen (RLS?)"); return; }
+  window.__shopSettings = nextSettings;
+  showToast("Presets", "Gespeichert ✅", { duration: 1200 });
+}
+
+
 function normalizeBadges(b){
   const arr = Array.isArray(b) ? b : (b ? [b] : []);
   const allowed = new Set(BADGE_OPTIONS.map(x=>x.key));
@@ -647,6 +707,12 @@ function closeAdmin(){ document.getElementById("modalBg").style.display = "none"
 document.getElementById("btnOpenAdmin").onclick = openAdmin;
 document.getElementById("btnCloseAdmin").onclick = closeAdmin;
 document.getElementById("modalBg").onclick = (e)=>{ if(e.target.id==="modalBg") closeAdmin(); };
+
+// Preview modal handlers
+function closePreview(){ const bg=document.getElementById('previewBg'); if(bg) bg.style.display='none'; }
+document.getElementById('btnClosePreview')?.addEventListener('click', closePreview);
+document.getElementById('previewBg')?.addEventListener('click', (e)=>{ if(e.target && e.target.id==='previewBg') closePreview(); });
+
 
 /* ========= Render ========= */
 function renderFilter(){
@@ -998,8 +1064,30 @@ const c = data.colors || {};
   const catRes = await sb.from("categories").select("*").order("created_at", {ascending:true});
   categories = catRes.data || [];
 
-  const prodRes = await sb.from("products").select("*").order("created_at", {ascending:false});
+// Produkte: bevorzugt per sort_order (Drag&Drop), fallback: created_at
+let prodRes;
+try{
+  prodRes = await sb.from("products").select("*")
+    .order("sort_order", {ascending:true, nullsFirst:false})
+    .order("created_at", {ascending:false});
+}catch(e){
+  prodRes = await sb.from("products").select("*").order("created_at", {ascending:false});
+}
+
   products = prodRes.data || [];
+// Fallback Sortierung aus localStorage (falls keine sort_order Spalte vorhanden / leer)
+try{
+  const ord = JSON.parse(localStorage.getItem("bf_product_order") || "null");
+  if(Array.isArray(ord) && ord.length && products.every(p=>p.sort_order==null)){
+    const rank = new Map(ord.map((id,i)=>[String(id), i]));
+    products.sort((a,b)=>{
+      const ra = rank.has(String(a.id)) ? rank.get(String(a.id)) : 1e9;
+      const rb = rank.has(String(b.id)) ? rank.get(String(b.id)) : 1e9;
+      if(ra!==rb) return ra-rb;
+      return String(b.created_at||"").localeCompare(String(a.created_at||""));
+    });
+  }
+}catch(e){}
 
   renderFilter();
   renderProducts();
@@ -1375,6 +1463,35 @@ function renderAdminProducts(){
 </div>
 
         <div style="height:12px"></div>
+
+<div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
+  <b>Ressourcen-Presets</b>
+  <div class="muted" style="font-size:12px; margin-top:4px">1 Klick: Produkt kopieren, Varianten/Ressourcen setzen, Bundle bauen.</div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+    <select id="presetSelect" style="flex:1; min-width:220px"></select>
+    <button id="btnApplyPreset" class="primary">Preset anwenden</button>
+  </div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+    <input id="presetName" placeholder="Preset Name (neu)" style="flex:1; min-width:220px" />
+    <button id="btnSavePreset">Als Preset speichern</button>
+    <button id="btnDelPreset" class="danger">Preset löschen</button>
+  </div>
+
+  <div style="height:10px"></div>
+  <div class="muted" style="font-size:12px">Bundle-Builder: summiert Ressourcen aus bestehenden Produkten → erstellt neues Bundle-Produkt.</div>
+  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+    <select id="bundlePick" multiple style="flex:1; min-width:260px; min-height:120px"></select>
+    <div style="display:flex; flex-direction:column; gap:8px; min-width:220px">
+      <input id="bundleName" placeholder="Bundle Name" />
+      <button id="btnMakeBundle" class="success">Bundle erstellen</button>
+      <div class="muted" style="font-size:12px">Tipp: STRG/⌘ für Multi-Select.</div>
+    </div>
+  </div>
+</div>
+
+        <div style="height:12px"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <button class="success" id="btnSaveProd">${editProductId ? "✅ Speichern" : "✅ Hinzufügen"}</button>
           <button class="danger" id="btnDeleteProd" style="display:${editProductId ? "" : "none"}">🗑 Löschen</button>
@@ -1386,7 +1503,7 @@ function renderAdminProducts(){
       <div class="head"><b>Produkte</b></div>
       <div class="body" style="overflow:auto">
         <table>
-          <thead><tr><th>Bild</th><th>Name</th><th>Kategorie</th><th>Badges</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
+          <thead><tr><th>↕</th><th>Bild</th><th>Name</th><th>Kategorie</th><th>Badges</th><th>Ressourcen</th><th>Aktionen</th></tr></thead>
           <tbody id="prodTable"></tbody>
         </table>
       </div>
@@ -1533,6 +1650,7 @@ renderBadgeChecks(st);
   // initial chips
   renderResChips(st);
   renderVarChips(st);
+  renderPresetsUI(st);
 }
 
 function fillEditorFromProduct(st, productId){
@@ -1560,8 +1678,9 @@ function fillEditorFromProduct(st, productId){
   st.setResources(Array.isArray(p.resources) ? p.resources : []);
   st.setVariants(Array.isArray(p.variants) && p.variants.length ? p.variants : [{ name:"Standard", multiplier: 1 }]);
   st.badges = normalizeBadges(p.badges);
-  renderBadgeChecks(st);
+  renderBadgeChecks(st);  renderPresetsUI(st);
 }
+
 
 function updateImagePreview(url){
   const wrap = document.getElementById("imgPreviewWrap");
@@ -1639,33 +1758,197 @@ function renderBadgeChecks(st){
       <label class="chip" style="cursor:pointer; user-select:none">
         <input type="checkbox" data-badge="${b.key}" ${checked} style="width:16px; height:16px; accent-color: var(--primary)" />
         <span>${escapeHtml(b.label)}</span>
-      </label>
-    `;
-  }).join("");
+     function renderProductsTable(){
+  const tb = document.getElementById("prodTable");
+  tb.innerHTML = products.length ? "" : `<tr><td colspan="7" class="muted">Keine Produkte</td></tr>`;
 
-  box.querySelectorAll("input[data-badge]").forEach(inp=>{
-    inp.onchange = ()=>{
-      const key = inp.getAttribute("data-badge");
-      const next = new Set(normalizeBadges(st.badges));
-      if(inp.checked) next.add(key); else next.delete(key);
-      st.badges = Array.from(next);
-      // optional small feedback
-      try{ showToast("Badges", "Gespeichert im Editor (Speichern klicken).", { duration: 900 }); }catch(e){}
-    };
+  // Für Drag & Drop: wir rendern Reihenfolge so wie sie aktuell in "products" steht.
+  products.forEach((p, idx)=>{
+    const tr = document.createElement("tr");
+    tr.setAttribute("draggable","true");
+    tr.setAttribute("data-pid", p.id);
+    tr.innerHTML = `
+      <td class="muted" style="white-space:nowrap; cursor:grab">☰</td>
+      <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:70px;height:44px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"
+            onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
+      <td>
+        <b>${escapeHtml(p.name)}</b>
+        <div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div>
+      </td>
+      <td class="muted">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
+      <td>${badgesToHtml(p.badges, { where: "row" }) || `<span class="muted">—</span>`}</td>
+      <td>${fmtRes(p.resources)}</td>
+      <td style="white-space:nowrap">
+        <button class="primary" data-edit="${p.id}">Bearbeiten</button>
+        <button data-prev="${p.id}">Vorschau</button>
+        <button data-dup="${p.id}">Duplizieren</button>
+      </td>
+    `;
+    tb.appendChild(tr);
+  });
+
+  tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{
+    editProductId = b.getAttribute("data-edit");
+    renderAdminProducts();
+  });
+
+  tb.querySelectorAll("[data-prev]").forEach(b=>b.onclick=()=>{
+    const pid = b.getAttribute("data-prev");
+    const p = products.find(x=>x.id===pid);
+    if(p) openProductPreview(p);
+  });
+
+  tb.querySelectorAll("[data-dup]").forEach(b=>b.onclick=async ()=>{
+    const pid = b.getAttribute("data-dup");
+    const p = products.find(x=>x.id===pid);
+    if(p) await duplicateProduct(p);
+  });
+
+  setupProductsDragDrop(tb);
+}
+
+let __dragPid = null;
+
+function setupProductsDragDrop(tb){
+  if(!tb) return;
+
+  tb.querySelectorAll("tr[draggable='true']").forEach(tr=>{
+    tr.addEventListener("dragstart", (e)=>{
+      __dragPid = tr.getAttribute("data-pid");
+      tr.style.opacity = ".55";
+      e.dataTransfer.effectAllowed = "move";
+    });
+
+    tr.addEventListener("dragend", ()=>{
+      tr.style.opacity = "";
+      __dragPid = null;
+    });
+
+    tr.addEventListener("dragover", (e)=>{
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+    });
+
+    tr.addEventListener("drop", async (e)=>{
+      e.preventDefault();
+      const targetPid = tr.getAttribute("data-pid");
+      if(!__dragPid || !targetPid || __dragPid===targetPid) return;
+
+      const from = products.findIndex(x=>x.id===__dragPid);
+      const to = products.findIndex(x=>x.id===targetPid);
+      if(from<0 || to<0) return;
+
+      const moved = products.splice(from,1)[0];
+      products.splice(to,0,moved);
+
+      // UI sofort
+      renderProductsTable();
+
+      // Persist: zuerst Supabase sort_order (falls existiert), sonst localStorage
+      await persistProductOrder();
+      // Shop-Ansicht aktualisieren
+      renderProducts();
+    });
   });
 }
 
-function renderProductsTable(){
-  const tb = document.getElementById("prodTable");
-  tb.innerHTML = products.length ? "" : `<tr><td colspan="6" class="muted">Keine Produkte</td></tr>`;
+async function persistProductOrder(){
+  // local fallback (damit es IMMER funktioniert ohne DB Änderung)
+  try{
+    localStorage.setItem("bf_product_order", JSON.stringify(products.map(p=>p.id)));
+  }catch(e){}
 
-  products.forEach(p=>{
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:70px;height:44px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"
-            onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
-      <td><b>${escapeHtml(p.name)}</b><div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div></td>
-      <td class="muted">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
+  if(!sb) return;
+
+  // Supabase: sort_order updaten (wenn Spalte existiert). Fehler wird still geschluckt.
+  try{
+    const updates = products.map((p, i)=>({ id: p.id, sort_order: i+1 }));
+    const r = await sb.from("products").upsert(updates, { onConflict: "id" });
+    if(r.error){
+      console.warn("sort_order update failed", r.error);
+      // kein harter Fehler: localStorage reicht als fallback
+      return;
+    }
+    showToast("Sortierung", "Gespeichert ✅", { duration: 1100 });
+  }catch(e){
+    // ignore
+  }
+}
+
+// ===== Vorschau (Shop 1:1) =====
+function openProductPreview(p){
+  const bg = document.getElementById("previewBg");
+  const mount = document.getElementById("previewMount");
+  if(!bg || !mount) return;
+
+  // 1:1 Card Markup wie im Shop
+  const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
+  const variants = getVariants(p);
+  const favActive = isFav(p.id);
+  const badgeOverlay = badgesToHtml(p.badges, { where: 'overlay' });
+  const badgeRow = badgesToHtml(p.badges, { where: 'row' });
+
+  mount.innerHTML = `
+    <div class="prod">
+      ${img ? `
+        <div class="previewBox" style="margin-bottom:10px">
+          <button class="favBtn favOverlay ${favActive ? "active" : ""}" title="Merken (Preview)">${favActive ? "★" : "☆"}</button>
+          ${badgeOverlay || ``}
+          <img src="${img}" alt="">
+        </div>
+      ` : ``}
+
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
+        <div style="min-width:0">
+          <b>${escapeHtml(p.name)}</b>
+          <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
+        </div>
+        ${!img ? `<button class="favBtn ${favActive ? "active" : ""}" title="Merken (Preview)">${favActive ? "★" : "☆"}</button>` : ``}
+      </div>
+
+      ${!img ? (badgeRow || ``) : ``}
+
+      ${variants.length>1 ? `
+        <div style="height:8px"></div>
+        <select style="width:100%">
+          ${variants.map(v=>`<option>${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`).join("")}
+        </select>
+      ` : ``}
+
+      <div class="chips">${fmtRes(p.resources || [])}</div>
+      <div style="height:8px"></div>
+      <button class="primary" style="width:100%">In den Warenkorb</button>
+    </div>
+  `;
+
+  bg.style.display = "flex";
+}
+
+async function duplicateProduct(p){
+  if(!sb) { alert("Supabase nicht bereit"); return; }
+
+  const payload = {
+    name: (String(p.name||"Produkt") + " (Kopie)").slice(0, 120),
+    category_id: p.category_id || null,
+    image_url: p.image_url || null,
+    resources: Array.isArray(p.resources) ? p.resources : [],
+    variants: Array.isArray(p.variants) ? p.variants : [{ name:"Standard", multiplier: 1 }],
+    badges: normalizeBadges(p.badges),
+    // sort_order: neue Kopie direkt nach dem Original (wenn Spalte existiert)
+    sort_order: (typeof p.sort_order === "number" ? p.sort_order + 0.5 : null)
+  };
+
+  const r = await sb.from("products").insert(payload).select("*").maybeSingle();
+  if(r.error){
+    console.error(r.error);
+    alert("Duplizieren fehlgeschlagen (RLS/Spalte?)");
+    return;
+  }
+  await loadPublic();
+  renderAdminProducts();
+  showToast("Produkt", "Dupliziert ✅", { duration: 1300 });
+}
+d">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
       <td>${badgesToHtml(p.badges, { where: "row" }) || `<span class="muted">—</span>`}</td>
       <td>${fmtRes(p.resources)}</td>
       <td>
@@ -1680,6 +1963,120 @@ function renderProductsTable(){
     renderAdminProducts();
   });
 }
+/* ========= Admin: Presets + Bundle Builder ========= */
+function renderPresetsUI(st){
+  const sel = document.getElementById("presetSelect");
+  const nameInp = document.getElementById("presetName");
+  const delBtn = document.getElementById("btnDelPreset");
+  const applyBtn = document.getElementById("btnApplyPreset");
+  const saveBtn = document.getElementById("btnSavePreset");
+  const bundlePick = document.getElementById("bundlePick");
+  const bundleName = document.getElementById("bundleName");
+  const bundleBtn = document.getElementById("btnMakeBundle");
+
+  if(sel){
+    const presets = getAdminPresets();
+    const prev = sel.value;
+    sel.innerHTML = presets.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("");
+    if(prev) sel.value = prev;
+  }
+
+  if(applyBtn){
+    applyBtn.onclick = ()=>{
+      const id = sel?.value;
+      const p = getAdminPresets().find(x=>x.id===id);
+      if(!p){ showToast("Preset", "Nicht gefunden"); return; }
+      st.setResources(Array.isArray(p.resources) ? p.resources : []);
+      st.setVariants(Array.isArray(p.variants) && p.variants.length ? p.variants : [{name:"Standard", multiplier:1}]);
+      st.setBadges(normalizeBadges(p.badges));
+      showToast("Preset", "Angewendet ✅", { duration: 1200 });
+    };
+  }
+
+  if(saveBtn){
+    saveBtn.onclick = async ()=>{
+      const nm = (nameInp?.value || "").trim();
+      if(!nm){ alert("Preset Name fehlt."); return; }
+      const presets = getAdminPresets().filter(p=>!DEFAULT_ADMIN_PRESETS.some(d=>d.id===p.id)); // defaults nicht duplizieren
+      presets.push({
+        id: "u_" + Math.random().toString(16).slice(2),
+        name: nm,
+        resources: st.resources || [],
+        variants: st.variants || [{name:"Standard", multiplier:1}],
+        badges: normalizeBadges(st.badges)
+      });
+      await saveAdminPresets(presets);
+      if(nameInp) nameInp.value = "";
+      renderPresetsUI(st);
+    };
+  }
+
+  if(delBtn){
+    delBtn.onclick = async ()=>{
+      const id = sel?.value;
+      if(!id) return;
+      // Defaults dürfen nicht gelöscht werden
+      if(DEFAULT_ADMIN_PRESETS.some(d=>d.id===id)){
+        showToast("Preset", "Default kann nicht gelöscht werden.", { duration: 1600 });
+        return;
+      }
+      const presets = getAdminPresets().filter(p=>p.id!==id && !DEFAULT_ADMIN_PRESETS.some(d=>d.id===p.id));
+      await saveAdminPresets(presets);
+      renderPresetsUI(st);
+    };
+  }
+
+  // Bundle picker (Produkte auswählen)
+  if(bundlePick){
+    const selected = new Set(Array.from(bundlePick.selectedOptions||[]).map(o=>o.value));
+    bundlePick.innerHTML = products.map(p=>`<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}</option>`).join("");
+    // reselect
+    Array.from(bundlePick.options).forEach(o=>{ if(selected.has(o.value)) o.selected = true; });
+  }
+
+  if(bundleBtn){
+    bundleBtn.onclick = async ()=>{
+      if(!sb){ alert("Supabase nicht bereit"); return; }
+      const ids = Array.from(bundlePick?.selectedOptions || []).map(o=>o.value).filter(Boolean);
+      if(ids.length<1){ alert("Bitte mindestens 1 Produkt auswählen."); return; }
+      const nm = (bundleName?.value || "").trim() || ("Bundle ("+ids.length+")");
+
+      // Ressourcen summieren
+      const totals = new Map(); // name -> {amount,color}
+      ids.forEach(id=>{
+        const p = products.find(x=>x.id===id);
+        (p?.resources||[]).forEach(r=>{
+          const key = String(r.name||"").trim();
+          if(!key) return;
+          const prev = totals.get(key) || { amount: 0, color: r.color || "#7dd3fc" };
+          prev.amount += Number(r.amount||0);
+          if(r.color) prev.color = r.color;
+          totals.set(key, prev);
+        });
+      });
+      const resources = Array.from(totals.entries()).map(([name,v])=>({ name, amount: Math.round(v.amount||0), color: v.color }));
+
+      // Bundle-Produkt erstellen (Badges automatisch)
+      const payload = {
+        name: nm,
+        category_id: null,
+        image_url: null,
+        resources,
+        variants: [{ name:"Standard", multiplier: 1 }],
+        badges: ["sale20"]
+      };
+
+      const r = await sb.from("products").insert(payload);
+      if(r.error){ console.error(r.error); alert("Bundle erstellen fehlgeschlagen (RLS?)"); return; }
+
+      await loadPublic();
+      renderAdminProducts();
+      showToast("Bundle", "Erstellt ✅", { duration: 1400 });
+    };
+  }
+}
+
+
 
 /* ========= Admin: Theme (mehr Farben + Live Vorschau + Speichern) ========= */
 function renderAdminTheme(){
