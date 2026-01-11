@@ -389,7 +389,22 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     white-space:nowrap;
   }
 
-</style>
+
+  /* === Promo Restzeit Warnung (auto) === */
+  .promoBar.promoUrgent{
+    animation: promoPulse 1.15s ease-in-out infinite, promoBlink .9s steps(2,end) infinite;
+  }
+  @keyframes promoPulse{
+    0%{ transform: scale(1); box-shadow: 0 10px 24px rgba(0,0,0,.25); }
+    50%{ transform: scale(1.012); box-shadow: 0 14px 34px rgba(0,0,0,.35); }
+    100%{ transform: scale(1); box-shadow: 0 10px 24px rgba(0,0,0,.25); }
+  }
+  @keyframes promoBlink{
+    0%,100%{ filter: brightness(1); }
+    50%{ filter: brightness(1.35); }
+  }
+
+
 </head>
 <body>
 
@@ -1223,6 +1238,23 @@ async function loadPublic(){
       return (hh>0) ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
     }
 
+
+    function promoStateFromMinutes(minLeft){
+      // minLeft kann null sein (kein Enddatum)
+      if(minLeft == null || !isFinite(minLeft)){
+        return { color: "#34d399", text: "Aktion läuft entspannt", urgent: false };
+      }
+      if(minLeft < 60){
+        return { color: "#fb7185", text: "Letzte Chance", urgent: true };
+      }
+      if(minLeft <= 180){
+        return { color: "#facc15", text: "Bald vorbei", urgent: false };
+      }
+      // > 180 min (inkl. > 360) => grün
+      return { color: "#34d399", text: "Aktion läuft entspannt", urgent: false };
+    }
+
+
     function getPromoCampaigns(){
       const settings = window.__shopSettings || {};
       const promo = settings.promo || {};
@@ -1299,20 +1331,39 @@ async function loadPublic(){
       return candidates[0] || null;
     }
 
-    function renderPromoBar(){
+        function renderPromoBar(){
       const box = promoBarEl;
       const now = getNowMs();
       const active = pickActivePromo(now);
 
       if(!active){
+        box.classList.remove("promoUrgent");
         box.style.display = "none";
         box.innerHTML = "";
         return;
       }
 
-      // Countdown nur wenn endAt vorhanden
       const endAtMs = active.endAt ? new Date(active.endAt).getTime() : null;
       const hasCountdown = !!endAtMs && !isNaN(endAtMs);
+
+      // Restzeit berechnen
+      let leftMs = null;
+      if(hasCountdown){
+        leftMs = endAtMs - now;
+        if(leftMs <= 0){
+          // 🛑 abgelaufen -> Banner ausblenden (evtl. nächste Aktion)
+          box.classList.remove("promoUrgent");
+          box.style.display = "none";
+          box.innerHTML = "";
+          return;
+        }
+      }
+
+      const leftMin = (leftMs != null) ? (leftMs / 60000) : null;
+      const state = promoStateFromMinutes(leftMin);
+
+      // 🔔 Blinken / Pulsieren bei < 60 Min
+      box.classList.toggle("promoUrgent", !!state.urgent);
 
       // Start timer once
       if(!__promoTimer){
@@ -1320,49 +1371,55 @@ async function loadPublic(){
           const now2 = getNowMs();
           const active2 = pickActivePromo(now2);
           if(!active2){
+            box.classList.remove("promoUrgent");
             box.style.display = "none";
             box.innerHTML = "";
             return;
           }
+
           const end2 = active2.endAt ? new Date(active2.endAt).getTime() : null;
+          const has2 = !!end2 && !isNaN(end2);
           const countEl = box.querySelector("[data-promo-count]");
-          if(countEl && end2 && !isNaN(end2)){
-            const left = end2 - now2;
-            if(left <= 0){
+
+          if(has2){
+            const left2 = end2 - now2;
+            if(left2 <= 0){
               // abgelaufen -> neu rendern (evtl. nächste Aktion)
               renderPromoBar();
               return;
             }
-            countEl.textContent = formatCountdown(left);
-          }else if(countEl){
-            countEl.textContent = "";
+            if(countEl) countEl.textContent = formatCountdown(left2);
+
+            const min2 = left2 / 60000;
+            const st2 = promoStateFromMinutes(min2);
+            box.classList.toggle("promoUrgent", !!st2.urgent);
+            box.style.borderColor = `${st2.color}AA`;
+            box.style.background = `linear-gradient(90deg, ${st2.color}33, rgba(20,25,35,.35))`;
+          }else{
+            if(countEl) countEl.textContent = "";
+            box.classList.remove("promoUrgent");
+            // ohne Enddatum: grün lassen
+            box.style.borderColor = `${state.color}AA`;
+            box.style.background = `linear-gradient(90deg, ${state.color}33, rgba(20,25,35,.35))`;
           }
         }, 250);
       }
 
       const title = (active.title || "Aktion").trim();
-      const sub = active.sub || "Zeitlich begrenzte Aktion";
+      const sub = (active.sub || state.text || "Zeitlich begrenzte Aktion").trim();
       const pill = active.pill || "";
-      const icon = active.icon || "";
-      const accent = active.color || "#34d399";
+      const icon = active.icon || "⏰";
 
       let countHtml = "";
       if(hasCountdown){
-        const left = endAtMs - now;
-        if(left <= 0){
-          // abgelaufen -> evtl. nächste Aktion
-          box.style.display = "none";
-          box.innerHTML = "";
-          return;
-        }
-        countHtml = `<div class="count" data-promo-count>${formatCountdown(left)}</div>`;
+        countHtml = `<div class="count" data-promo-count>${formatCountdown(leftMs)}</div>`;
       }else{
         countHtml = `<div class="count" data-promo-count style="opacity:.0; width:0; padding:0; border:0"></div>`;
       }
 
-      // Styling via inline vars
-      box.style.borderColor = `${accent}55`;
-      box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
+      // Styling (auto nach Restzeit)
+      box.style.borderColor = `${state.color}AA`;
+      box.style.background = `linear-gradient(90deg, ${state.color}33, rgba(20,25,35,.35))`;
 
       box.innerHTML = `
         <div class="left">
@@ -3187,6 +3244,12 @@ function renderAdminPromo(){
         <div style="height:12px"></div>
         <div class="muted" style="font-size:12px">Live Vorschau</div>
         <div style="height:8px"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+          <button id="promoPreviewGt6h" class="primary" style="opacity:.85">Preview: > 6 Stunden</button>
+          <button id="promoPreview3to1h" class="primary" style="opacity:.85">Preview: 3 bis 1 Stunde</button>
+          <button id="promoPreviewLt60" class="danger" style="opacity:.9">Preview: < 60 Minuten</button>
+          <button id="promoPreviewLive" style="opacity:.75">Live</button>
+        </div>
         <div class="promoBar" id="promoPreviewBox2" style="display:none"></div>
       </div>
     </div>
@@ -3197,6 +3260,23 @@ function renderAdminPromo(){
   modeEl.value = mode;
   const allowUndatedEl = document.getElementById("promoAllowUndated");
   if(allowUndatedEl) allowUndatedEl.checked = (promo.allowUndated === true);
+
+  // Preview Buttons (Admin)
+  const btnPrevGt6h = document.getElementById("promoPreviewGt6h");
+  const btnPrev3to1h = document.getElementById("promoPreview3to1h");
+  const btnPrevLt60 = document.getElementById("promoPreviewLt60");
+  const btnPrevLive = document.getElementById("promoPreviewLive");
+
+  const setPrev = (min)=>{
+    __promoPreviewOverrideMin = (min == null) ? null : Number(min);
+    renderPreview();
+  };
+
+  btnPrevGt6h && (btnPrevGt6h.onclick = ()=>setPrev(361));   // > 360 min
+  btnPrev3to1h && (btnPrev3to1h.onclick = ()=>setPrev(120)); // 180–60 min (z.B. 120)
+  btnPrevLt60 && (btnPrevLt60.onclick = ()=>setPrev(45));    // < 60 min
+  btnPrevLive && (btnPrevLive.onclick = ()=>setPrev(null));
+
 
   const normalize = ()=>{
     campaigns = (campaigns||[]).map((c, idx)=>({
@@ -3260,31 +3340,63 @@ function renderAdminPromo(){
     c.endAt = fromLocalInput(document.getElementById("promoEndAt2").value);
   };
 
+    let __promoPreviewOverrideMin = null; // null = live
+
   const renderPreview = ()=>{
     readFormIntoCampaign();
     const box = document.getElementById("promoPreviewBox2");
     const i = getSelectedIndex();
     const c = campaigns[i];
     if(!c || !c.enabled){
+      box.classList.remove("promoUrgent");
       box.style.display = "none";
       box.innerHTML = "";
       return;
     }
 
-    const endMs = c.endAt ? new Date(c.endAt).getTime() : null;
-    const hasCountdown = endMs && !isNaN(endMs);
+    // Countdown / Restzeit (live oder preview)
+    let leftMs = null;
+    if(__promoPreviewOverrideMin != null){
+      leftMs = Math.max(0, Number(__promoPreviewOverrideMin) * 60000);
+    }else{
+      const endMs = c.endAt ? new Date(c.endAt).getTime() : null;
+      const hasCountdown = endMs && !isNaN(endMs);
+      if(hasCountdown){
+        leftMs = Math.max(0, endMs - Date.now());
+      }
+    }
 
-    box.style.borderColor = `${c.color}55`;
-    box.style.background = `linear-gradient(90deg, ${c.color}22, rgba(20,25,35,.35))`;
+    const leftMin = (leftMs != null) ? (leftMs / 60000) : null;
+    const state = (typeof promoStateFromMinutes === "function")
+      ? promoStateFromMinutes(leftMin)
+      : { color: (c.color||"#34d399"), text:"", urgent:false };
+
+    box.classList.toggle("promoUrgent", !!state.urgent);
+
+    box.style.borderColor = `${state.color}AA`;
+    box.style.background = `linear-gradient(90deg, ${state.color}33, rgba(20,25,35,.35))`;
+
+    const title = (c.title || "").trim();
+    const icon = (c.icon || "").trim();
+    const pill = (c.pill || "").trim();
+
+    // Preview-Text: wenn live -> c.sub, sonst Status-Text
+    const sub = (__promoPreviewOverrideMin != null)
+      ? (state.text || c.sub || "")
+      : (c.sub || "");
+
+    const countHtml = (leftMs != null)
+      ? `<div class="count">${formatCountdown(leftMs)}</div>`
+      : ``;
 
     box.innerHTML = `
       <div class="left">
-        <div class="title">${escapeHtml((c.icon ? c.icon + " " : "") + (c.title || ""))}</div>
-        <div class="sub">${escapeHtml(c.sub || "")}</div>
+        <div class="title">${escapeHtml((icon ? icon + " " : "") + title)}</div>
+        <div class="sub">${escapeHtml(sub || "")}</div>
       </div>
       <div class="right">
-        ${c.pill ? `<div class="pill">${escapeHtml(c.pill)}</div>` : ``}
-        ${hasCountdown ? `<div class="count">00:00</div>` : ``}
+        ${pill ? `<div class="pill">${escapeHtml(pill)}</div>` : ``}
+        ${countHtml}
       </div>
     `;
     box.style.display = "";
