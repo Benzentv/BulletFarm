@@ -858,10 +858,18 @@ function openProductPreview(productId){
       ` : ``}
       <div class="chips">${fmtRes(p.resources || [])}</div>
       <div style="height:10px"></div>
-      <button class="primary" style="width:100%" disabled>In den Warenkorb</button>
-      <div class="muted" style="margin-top:8px; font-size:12px">Dies ist eine 1:1 Vorschau (Button deaktiviert).</div>
+      <button class="primary" style="width:100%" id="previewAddBtn">In den Warenkorb</button>
     </div>
   `;
+
+  const addBtn = bg.querySelector("#previewAddBtn");
+  if(addBtn){
+    addBtn.onclick = ()=>{
+      const v = variants && variants[0];
+      addToCartUX(addBtn, p.id, v?.name || "Standard", v?.multiplier || 1);
+    };
+  }
+
   bg.style.display="flex";
 }
 async function duplicateProduct(productId){
