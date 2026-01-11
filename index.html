@@ -1960,21 +1960,8 @@ async function duplicateProduct(p){
   renderAdminProducts();
   showToast("Produkt", "Dupliziert ✅", { duration: 1300 });
 }
-d">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
-      <td>${badgesToHtml(p.badges, { where: "row" }) || `<span class="muted">—</span>`}</td>
-      <td>${fmtRes(p.resources)}</td>
-      <td>
-        <button class="primary" data-edit="${p.id}">Bearbeiten</button>
-      </td>
-    `;
-    tb.appendChild(tr);
-  });
 
-  tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{
-    editProductId = b.getAttribute("data-edit");
-    renderAdminProducts();
-  });
-}
+
 /* ========= Admin: Presets + Bundle Builder ========= */
 function renderPresetsUI(st){
   const sel = document.getElementById("presetSelect");
