@@ -1758,7 +1758,19 @@ function renderBadgeChecks(st){
       <label class="chip" style="cursor:pointer; user-select:none">
         <input type="checkbox" data-badge="${b.key}" ${checked} style="width:16px; height:16px; accent-color: var(--primary)" />
         <span>${escapeHtml(b.label)}</span>
-     function renderProductsTable(){
+      </label>`;
+  }).join("");
+
+  box.querySelectorAll('input[data-badge]').forEach(inp=>{
+    inp.onchange = ()=>{
+      const keys = [...box.querySelectorAll('input[data-badge]:checked')].map(x=>x.getAttribute('data-badge'));
+      st.setBadges(keys);
+    };
+  });
+}
+
+function renderProductsTable(){
+
   const tb = document.getElementById("prodTable");
   tb.innerHTML = products.length ? "" : `<tr><td colspan="7" class="muted">Keine Produkte</td></tr>`;
 
