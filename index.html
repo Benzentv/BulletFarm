@@ -1233,6 +1233,8 @@ async function loadPublic(){
       const pad = (n)=>String(n).padStart(2,"0");
       return (hh>0) ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
     }
+window.formatCountdown = formatCountdown;
+
 
 /* ===== Promo Ampel Logik (global, für Admin-Preview & Shop) =====
    > 240 min => Grün, 240–60 min => Gelb, < 60 min => Rot + Pulsieren
