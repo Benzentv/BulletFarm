@@ -719,12 +719,14 @@ function renderProducts(){
           <b>${escapeHtml(p.name)}</b>
           <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
         </div>
+      ${!img ? `
         <button class="favBtn ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">
           ${favActive ? "★" : "☆"}
         </button>
+      ` : ``}
       </div>
 
-      ${badgeRow || ``}
+      ${!img ? (badgeRow || ``) : ``}
 
       ${variants.length>1 ? `
         <div style="height:8px"></div>
