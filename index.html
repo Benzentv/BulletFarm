@@ -389,23 +389,6 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     white-space:nowrap;
   }
 
-
-  /* === Promo: Blinken/Pulsieren bei < 60 Min === */
-  .promoBar.promoUrgent{
-    animation: promoUrgentPulse 1.15s ease-in-out infinite;
-  }
-  .promoBar.promoUrgent .count{
-    animation: promoUrgentBlink .85s ease-in-out infinite;
-  }
-  @keyframes promoUrgentPulse{
-    0%{ box-shadow: 0 10px 24px rgba(0,0,0,.25); transform: translateZ(0); }
-    50%{ box-shadow: 0 12px 34px rgba(0,0,0,.35); transform: translateZ(0); }
-    100%{ box-shadow: 0 10px 24px rgba(0,0,0,.25); transform: translateZ(0); }
-  }
-  @keyframes promoUrgentBlink{
-    0%,100%{ opacity: 1; }
-    50%{ opacity: .55; }
-  }
 </style>
 </head>
 <body>
@@ -1290,9 +1273,17 @@ async function loadPublic(){
       const within = (c)=>{
         const s = c.startAt ? new Date(c.startAt).getTime() : null;
         const e = c.endAt ? new Date(c.endAt).getTime() : null;
-        if(s && !isNaN(s) && nowMs < s) return false;
-        if(e && !isNaN(e) && nowMs > e) return false;
-        // wenn weder start noch end gesetzt, trotzdem anzeigen
+
+        const sOk = !!s && !isNaN(s);
+        const eOk = !!e && !isNaN(e);
+
+        // ✅ Optional: Ohne Datum/Zeit nur anzeigen, wenn Admin-Option aktiv ist
+        if(!sOk && !eOk){
+          return promo.allowUndated === true;
+        }
+
+        if(sOk && nowMs < s) return false;
+        if(eOk && nowMs > e) return false;
         return true;
       };
 
@@ -1323,38 +1314,6 @@ async function loadPublic(){
       const endAtMs = active.endAt ? new Date(active.endAt).getTime() : null;
       const hasCountdown = !!endAtMs && !isNaN(endAtMs);
 
-      const timeLeftMs = hasCountdown ? (endAtMs - now) : null;
-      const timeLeftMin = (timeLeftMs != null) ? (timeLeftMs / 60000) : null;
-
-      /* === AUTOMATISCHE FARBLOGIK je nach Restzeit ===
-         > 360 min  -> Grün
-         180–60 min -> Gelb
-         < 60 min   -> Rot
-         (Zwischen 360 und 180 bleibt es Grün)
-      */
-      let stateColor = "#34d399"; // 🟢 Grün
-      let stateText  = "Aktion läuft entspannt";
-
-      if(timeLeftMin != null){
-        if(timeLeftMin < 60){
-          stateColor = "#fb7185"; // 🔴 Rot
-          stateText  = "Letzte Chance";
-        }else if(timeLeftMin <= 180){
-          stateColor = "#facc15"; // 🟡 Gelb
-          stateText  = "Bald vorbei";
-        }else if(timeLeftMin > 360){
-          stateColor = "#34d399"; // 🟢 Grün
-          stateText  = "Aktion läuft entspannt";
-        }else{
-          // 360..180 -> weiterhin Grün
-          stateColor = "#34d399";
-          stateText  = "Aktion läuft entspannt";
-        }
-      }
-      const __urgent = (timeLeftMin != null) && (timeLeftMin < 60);
-      try{ box.classList.toggle("promoUrgent", __urgent); }catch(_e){}
-
-
       // Start timer once
       if(!__promoTimer){
         __promoTimer = setInterval(()=>{
@@ -1375,18 +1334,6 @@ async function loadPublic(){
               return;
             }
             countEl.textContent = formatCountdown(left);
-
-            // Farbwechsel live mitziehen
-            const minLeft = left / 60000;
-
-            try{ box.classList.toggle("promoUrgent", minLeft < 60); }catch(_e){}
-            let c = "#34d399";
-            if(minLeft < 60) c = "#fb7185";
-            else if(minLeft <= 180) c = "#facc15";
-            else c = "#34d399";
-
-            box.style.borderColor = `${c}AA`;
-            box.style.background = `linear-gradient(90deg, ${c}33, rgba(20,25,35,.35))`;
           }else if(countEl){
             countEl.textContent = "";
           }
@@ -1394,10 +1341,10 @@ async function loadPublic(){
       }
 
       const title = (active.title || "Aktion").trim();
-      // wenn Admin-Subtext gesetzt ist, nutzen; sonst Status-Text anzeigen
-      const sub = (active.sub && String(active.sub).trim()) ? active.sub : stateText;
+      const sub = active.sub || "Zeitlich begrenzte Aktion";
       const pill = active.pill || "";
-      const icon = active.icon || "⏰";
+      const icon = active.icon || "";
+      const accent = active.color || "#34d399";
 
       let countHtml = "";
       if(hasCountdown){
@@ -1413,9 +1360,9 @@ async function loadPublic(){
         countHtml = `<div class="count" data-promo-count style="opacity:.0; width:0; padding:0; border:0"></div>`;
       }
 
-      // Styling via inline vars (Farbe kommt jetzt aus Restzeit-Logik)
-      box.style.borderColor = `${stateColor}AA`;
-      box.style.background = `linear-gradient(90deg, ${stateColor}33, rgba(20,25,35,.35))`;
+      // Styling via inline vars
+      box.style.borderColor = `${accent}55`;
+      box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
 
       box.innerHTML = `
         <div class="left">
@@ -3165,6 +3112,11 @@ function renderAdminPromo(){
             <option value="off">Aus</option>
           </select>
 
+          <label class="chip" style="cursor:pointer; gap:8px">
+            <input type="checkbox" id="promoAllowUndated" style="margin-right:6px" />
+            Ohne Datum/Zeit anzeigen
+          </label>
+
           <div style="flex:1"></div>
 
           <button id="promoAdd" class="primary">+ Aktion</button>
@@ -3231,9 +3183,6 @@ function renderAdminPromo(){
 
         <button class="primary" id="promoSave2">Speichern</button>
         <button class="" id="promoPreview2" style="margin-left:8px">Vorschau</button>
-        <button id="promoPrevOver6h" style="margin-left:8px">Preview: > 6h</button>
-        <button id="promoPrev3to1h" style="margin-left:8px">Preview: 3–1h</button>
-        <button id="promoPrevUnder60" class="danger" style="margin-left:8px">Preview: < 60m</button>
 
         <div style="height:12px"></div>
         <div class="muted" style="font-size:12px">Live Vorschau</div>
@@ -3246,6 +3195,8 @@ function renderAdminPromo(){
   const selEl = document.getElementById("promoSel");
   const modeEl = document.getElementById("promoMode");
   modeEl.value = mode;
+  const allowUndatedEl = document.getElementById("promoAllowUndated");
+  if(allowUndatedEl) allowUndatedEl.checked = (promo.allowUndated === true);
 
   const normalize = ()=>{
     campaigns = (campaigns||[]).map((c, idx)=>({
@@ -3309,7 +3260,7 @@ function renderAdminPromo(){
     c.endAt = fromLocalInput(document.getElementById("promoEndAt2").value);
   };
 
-  const renderPreview = (opts={})=>{
+  const renderPreview = ()=>{
     readFormIntoCampaign();
     const box = document.getElementById("promoPreviewBox2");
     const i = getSelectedIndex();
@@ -3322,55 +3273,18 @@ function renderAdminPromo(){
 
     const endMs = c.endAt ? new Date(c.endAt).getTime() : null;
     const hasCountdown = endMs && !isNaN(endMs);
-    // Admin-Preview: Zustände simulieren (ohne echte Zeit zu verändern)
-    const forceMin = (opts && opts.forceMinutes != null) ? Number(opts.forceMinutes) : null;
-    const label = (opts && opts.label) ? String(opts.label) : "";
 
-    let timeLeftMin = null;
-    if(forceMin != null && Number.isFinite(forceMin)){
-      timeLeftMin = forceMin;
-    }else if(hasCountdown){
-      // grobe Vorschau: echte Restzeit zur aktuellen Uhrzeit
-      timeLeftMin = (endMs - Date.now()) / 60000;
-    }
-
-    // gleiche Logik wie im Shop
-    let stateColor = "#34d399"; // Grün
-    let stateText  = "Aktion läuft entspannt";
-    if(timeLeftMin != null){
-      if(timeLeftMin < 60){
-        stateColor = "#fb7185"; // Rot
-        stateText  = "Letzte Chance";
-      }else if(timeLeftMin <= 180){
-        stateColor = "#facc15"; // Gelb
-        stateText  = "Bald vorbei";
-      }
-    }
-
-
-    box.style.borderColor = `${stateColor}AA`;
-    box.style.background = `linear-gradient(90deg, ${stateColor}33, rgba(20,25,35,.35))`;
-
-    try{ box.classList.toggle("promoUrgent", (timeLeftMin != null) && (timeLeftMin < 60)); }catch(_e){}
-
-    const previewCount = ()=>{
-      const m = (timeLeftMin!=null && Number.isFinite(timeLeftMin)) ? Math.max(0, timeLeftMin) : 0;
-      const total = Math.round(m*60);
-      const hh = Math.floor(total/3600);
-      const mm = Math.floor((total%3600)/60);
-      const ss = total%60;
-      const pad=(n)=>String(n).padStart(2,"0");
-      return (hh>0) ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
-    };
+    box.style.borderColor = `${c.color}55`;
+    box.style.background = `linear-gradient(90deg, ${c.color}22, rgba(20,25,35,.35))`;
 
     box.innerHTML = `
       <div class="left">
         <div class="title">${escapeHtml((c.icon ? c.icon + " " : "") + (c.title || ""))}</div>
-        <div class="sub">${escapeHtml(label || c.sub || stateText || "")}</div>
+        <div class="sub">${escapeHtml(c.sub || "")}</div>
       </div>
       <div class="right">
         ${c.pill ? `<div class="pill">${escapeHtml(c.pill)}</div>` : ``}
-        ${hasCountdown ? `<div class="count">${previewCount()}</div>` : ``}
+        ${hasCountdown ? `<div class="count">00:00</div>` : ``}
       </div>
     `;
     box.style.display = "";
@@ -3452,17 +3366,12 @@ function renderAdminPromo(){
 
   document.getElementById("promoPreview2").onclick = renderPreview;
 
-
-  document.getElementById("promoPrevOver6h").onclick = ()=>renderPreview({ forceMinutes: 420, label: "So sieht es bei Mehr als 6 Stunden aus" });
-  document.getElementById("promoPrev3to1h").onclick = ()=>renderPreview({ forceMinutes: 120, label: "So sieht es bei 3 bis 1 Stunde aus" });
-  document.getElementById("promoPrevUnder60").onclick = ()=>renderPreview({ forceMinutes: 30, label: "So sieht es in Unter 60 Minuten aus" });
-
-
   document.getElementById("promoSave2").onclick = async ()=>{
     readFormIntoCampaign();
     const nextPromo = {
       ...(promo || {}),
       mode: modeEl.value || "auto",
+      allowUndated: !!document.getElementById("promoAllowUndated")?.checked,
       // optional: legacy fields aktualisieren (zeigt aktuellste Aktion an, falls jemand alten Code nutzt)
       enabled: true,
       campaigns: campaigns
