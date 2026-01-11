@@ -609,6 +609,37 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 let sb = null;
 
+/* =========================
+   GLOBAL SETTINGS HELPERS
+   (Fix für: saveShopSettingsBatch is not defined)
+   ========================= */
+async function saveShopSettingsPatch(patchObj, toastTitle="Settings"){
+  try{
+    if(!sb){ throw new Error("Supabase client not ready"); }
+    const next = Object.assign({}, window.__shopSettings || {}, patchObj);
+    const r = await sb.from("shop_settings").upsert({ id: 1, data: next });
+    if(r.error){
+      console.warn(r.error);
+      if(typeof showToast === "function") showToast(toastTitle, "Speichern fehlgeschlagen (RLS?)");
+      return { ok:false, error:r.error };
+    }
+    window.__shopSettings = next;
+    if(typeof showToast === "function") showToast(toastTitle, "Gespeichert ✅", { duration: 1200 });
+    // Promo/Theme ggf. neu rendern
+    try{ if(typeof window.__renderPromoBar === "function") window.__renderPromoBar(); }catch(_){}
+    return { ok:true };
+  }catch(e){
+    console.warn(e);
+    return { ok:false, error:e };
+  }
+}
+
+// Kompatibilität: manche Buttons nutzen "Batch"
+async function saveShopSettingsBatch(patchObj, toastTitle){
+  return await saveShopSettingsPatch(patchObj, toastTitle);
+}
+
+
 /* ========= State ========= */
 let categories = [];
 let products = [];
@@ -2532,12 +2563,6 @@ window.addEventListener("DOMContentLoaded", async ()=>{
   sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   await loadPublic();
 });
-
-
-// Compatibility alias: some UI buttons may call saveShopSettingsBatch
-async function saveShopSettingsBatch(patch, label){
-  return await saveShopSettingsPatch(patch, label);
-}
 </script>
 
 </body>
