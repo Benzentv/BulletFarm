@@ -628,6 +628,179 @@ async function saveAdminPresets(presets){
 }
 
 
+/* ========= Ressourcen-Bibliothek (einmal anlegen, überall verwenden) ========= */
+function getResourceLibrary(){
+  const s = window.__shopSettings || {};
+  const arr = Array.isArray(s.resourceLibrary) ? s.resourceLibrary : [];
+  // normalize + unique by name (case-insensitive)
+  const byKey = new Map();
+  arr.forEach(it=>{
+    const name = String(it?.name||"").trim();
+    if(!name) return;
+    const key = name.toLowerCase();
+    byKey.set(key, {
+      id: String(it?.id||("r_"+Math.random().toString(16).slice(2))),
+      name,
+      color: String(it?.color||"#7dd3fc")
+    });
+  });
+  return Array.from(byKey.values()).sort((a,b)=>a.name.localeCompare(b.name, "de"));
+}
+
+async function saveResourceLibrary(list){
+  if(!sb) return;
+  const safe = (Array.isArray(list)?list:[])
+    .map(it=>({
+      id: String(it?.id || ("r_"+Math.random().toString(16).slice(2))),
+      name: String(it?.name||"").trim(),
+      color: String(it?.color||"#7dd3fc")
+    }))
+    .filter(it=>it.name);
+
+  // unique by name (case-insensitive)
+  const byKey = new Map();
+  safe.forEach(it=>byKey.set(it.name.toLowerCase(), it));
+  const unique = Array.from(byKey.values()).sort((a,b)=>a.name.localeCompare(b.name,"de"));
+
+  const nextSettings = Object.assign({}, window.__shopSettings || {}, { resourceLibrary: unique });
+  const r = await sb.from("shop_settings").upsert({ id: 1, data: nextSettings });
+  if(r.error){
+    console.warn(r.error);
+    showToast("Ressourcen", "Bibliothek speichern fehlgeschlagen (RLS?)");
+    return;
+  }
+  window.__shopSettings = nextSettings;
+  showToast("Ressourcen", "Bibliothek gespeichert ✅", { duration: 1200 });
+}
+
+function renderResourceLibraryUI(st){
+  const sel = document.getElementById("libResSelect");
+  const nameInp = document.getElementById("libResName");
+  const colorInp = document.getElementById("libResColor");
+  const hint = document.getElementById("libResHint");
+  const btnSave = document.getElementById("btnLibSave");
+  const btnDel = document.getElementById("btnLibDelete");
+  const btnAdd = document.getElementById("btnLibAddToProduct");
+  const btnAddNoPrompt = document.getElementById("btnLibAddToProductNoPrompt");
+
+  if(!sel) return;
+
+  const lib = getResourceLibrary();
+  const prev = sel.value;
+  sel.innerHTML = lib.length
+    ? lib.map(r=>`<option value="${escapeHtml(r.id)}" data-name="${escapeHtml(r.name)}" data-color="${escapeHtml(r.color)}">${escapeHtml(r.name)}</option>`).join("")
+    : `<option value="">(Noch keine Ressourcen angelegt)</option>`;
+  if(prev) sel.value = prev;
+
+  function setFormFromSelected(){
+    const opt = sel.options[sel.selectedIndex];
+    if(!opt || !opt.value){
+      if(hint) hint.textContent = "Lege zuerst eine Ressource an (Name + Farbe) und klicke Speichern.";
+      return;
+    }
+    const n = opt.getAttribute("data-name") || "";
+    const c = opt.getAttribute("data-color") || "#7dd3fc";
+    if(nameInp) nameInp.value = n;
+    if(colorInp) colorInp.value = c;
+    if(hint) hint.textContent = "Tipp: '➕ Bei Produkt einfügen' fragt nur die Menge ab und setzt Name/Farbe automatisch.";
+  }
+
+  sel.onchange = setFormFromSelected;
+  setFormFromSelected();
+
+  function addResourceToProduct(resourceDef, amount){
+    const name = String(resourceDef?.name||"").trim();
+    if(!name) return;
+    const color = String(resourceDef?.color||"#7dd3fc");
+    const amt = Math.round(Number(amount)||0);
+    if(!Number.isFinite(amt) || amt<=0){
+      showToast("Ressource", "Bitte eine positive Menge eingeben.", { duration: 1600 });
+      return;
+    }
+
+    const cur = Array.isArray(st.resources) ? st.resources.slice() : [];
+    const idx = cur.findIndex(x=>String(x?.name||"").trim().toLowerCase() === name.toLowerCase());
+    if(idx >= 0){
+      // wenn schon vorhanden: Menge ersetzen (nicht addieren), damit du nur "Menge bestimmen" musst
+      cur[idx] = { name, color, amount: amt };
+    }else{
+      cur.push({ name, color, amount: amt });
+    }
+    st.setResources(cur);
+    showToast("Ressource", `${name} gesetzt ✅`, { duration: 1100 });
+  }
+
+  if(btnAdd){
+    btnAdd.onclick = ()=>{
+      const opt = sel.options[sel.selectedIndex];
+      if(!opt || !opt.value){ alert("Keine Ressource ausgewählt."); return; }
+      const name = opt.getAttribute("data-name") || "";
+      const color = opt.getAttribute("data-color") || "#7dd3fc";
+      const inp = prompt(`Menge für "${name}"`, "5000");
+      if(inp == null) return;
+      const n = parseAmountDE(inp);
+      if(n == null) { alert("Ungültige Zahl."); return; }
+      addResourceToProduct({ name, color }, n);
+    };
+  }
+
+  if(btnAddNoPrompt){
+    btnAddNoPrompt.onclick = ()=>{
+      // nimmt Menge aus dem normalen Ressourcen-Feld (rAmt), falls vorhanden
+      const opt = sel.options[sel.selectedIndex];
+      if(!opt || !opt.value){ alert("Keine Ressource ausgewählt."); return; }
+      const name = opt.getAttribute("data-name") || "";
+      const color = opt.getAttribute("data-color") || "#7dd3fc";
+      const amtInput = document.getElementById("rAmt");
+      const n = parseAmountDE(amtInput?.value || "");
+      if(n == null){
+        alert("Bitte zuerst bei 'Anzahl' eine Menge eingeben (oder nutze den Button mit Prompt).");
+        return;
+      }
+      addResourceToProduct({ name, color }, n);
+      if(amtInput) amtInput.value = "";
+    };
+  }
+
+  if(btnSave){
+    btnSave.onclick = async ()=>{
+      const name = (nameInp?.value || "").trim();
+      const color = (colorInp?.value || "#7dd3fc");
+      if(!name){ alert("Name fehlt."); return; }
+
+      const lib = getResourceLibrary();
+      const key = name.toLowerCase();
+      const existing = lib.find(x=>x.name.toLowerCase()===key);
+      if(existing){
+        existing.color = color;
+      }else{
+        lib.push({ id: "r_" + Math.random().toString(16).slice(2), name, color });
+      }
+      await saveResourceLibrary(lib);
+      renderResourceLibraryUI(st);
+      // select saved
+      const latest = getResourceLibrary().find(x=>x.name.toLowerCase()===key);
+      if(latest) sel.value = latest.id;
+      setFormFromSelected();
+    };
+  }
+
+  if(btnDel){
+    btnDel.onclick = async ()=>{
+      const opt = sel.options[sel.selectedIndex];
+      if(!opt || !opt.value) return;
+      const name = opt.getAttribute("data-name") || "";
+      const ok = confirm(`Ressource "${name}" wirklich aus der Bibliothek löschen? (Produkte bleiben unverändert)`);
+      if(!ok) return;
+      const lib2 = getResourceLibrary().filter(x=>x.id !== opt.value);
+      await saveResourceLibrary(lib2);
+      renderResourceLibraryUI(st);
+    };
+  }
+}
+
+
+
 function normalizeBadges(b){
   const arr = Array.isArray(b) ? b : (b ? [b] : []);
   const allowed = new Set(BADGE_OPTIONS.map(x=>x.key));
@@ -1444,6 +1617,30 @@ function renderAdminProducts(){
 
           <div style="height:10px"></div>
           <div id="resList" class="chips"></div>
+
+          <div style="height:12px"></div>
+
+          <div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.015)">
+            <b>Ressourcen-Bibliothek</b>
+            <div class="muted" style="font-size:12px; margin-top:4px">Einmal anlegen → bei Produkten per Klick einfügen (du gibst nur noch die Menge an).</div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center">
+              <select id="libResSelect" style="flex:1; min-width:220px"></select>
+              <button id="btnLibAddToProduct" class="primary">➕ Bei Produkt einfügen</button>
+              <button id="btnLibAddToProductNoPrompt">⚡ Einfügen (Menge übernehmen)</button>
+            </div>
+
+            <div style="height:10px"></div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+              <input id="libResName" placeholder="Neue Ressource (Name)" style="flex:1; min-width:220px" />
+              <input id="libResColor" type="color" value="#7dd3fc" style="width:70px; padding:6px" />
+              <button id="btnLibSave" class="success">💾 Anlegen / Speichern</button>
+              <button id="btnLibDelete" class="danger">🗑 Löschen</button>
+            </div>
+
+            <div class="muted" id="libResHint" style="margin-top:8px; font-size:12px"></div>
+          </div>
         </div>
 
 <div style="height:12px"></div>
@@ -1651,6 +1848,7 @@ renderBadgeChecks(st);
   renderResChips(st);
   renderVarChips(st);
   renderPresetsUI(st);
+  renderResourceLibraryUI(st);
 }
 
 function fillEditorFromProduct(st, productId){
@@ -1665,6 +1863,7 @@ function fillEditorFromProduct(st, productId){
     updateImagePreview("");
     st.setResources([]);
     st.setVariants([{ name:"Standard", multiplier: 1 }]);
+    renderResourceLibraryUI(st);
     return;
   }
 
@@ -1679,6 +1878,7 @@ function fillEditorFromProduct(st, productId){
   st.setVariants(Array.isArray(p.variants) && p.variants.length ? p.variants : [{ name:"Standard", multiplier: 1 }]);
   st.badges = normalizeBadges(p.badges);
   renderBadgeChecks(st);  renderPresetsUI(st);
+  renderResourceLibraryUI(st);
 }
 
 
