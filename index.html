@@ -639,6 +639,159 @@ async function saveShopSettingsBatch(patchObj, toastTitle){
   return await saveShopSettingsPatch(patchObj, toastTitle);
 }
 
+/* =========================
+   ADMIN UX: Sortierung / Duplizieren / Vorschau / Bundle-Builder
+   - Sortierung wird in shop_settings.productOrder gespeichert (kein DB-Schema nötig)
+   ========================= */
+function getProductOrder(){
+  const arr = window.__shopSettings?.productOrder;
+  return Array.isArray(arr) ? arr.map(String) : null;
+}
+function applyProductOrder(){
+  const order = getProductOrder();
+  if(!order || !products || !products.length) return;
+  const pos = new Map(order.map((id,i)=>[String(id), i]));
+  products.sort((a,b)=>{
+    const pa = pos.has(String(a.id)) ? pos.get(String(a.id)) : 1e9;
+    const pb = pos.has(String(b.id)) ? pos.get(String(b.id)) : 1e9;
+    if(pa !== pb) return pa - pb;
+    return String(a.name||"").localeCompare(String(b.name||""), "de");
+  });
+}
+async function persistProductOrderFromTable(tb){
+  try{
+    const ids = Array.from(tb.querySelectorAll("tr[data-id]")).map(tr=>tr.getAttribute("data-id")).filter(Boolean);
+    if(!ids.length) return;
+    await saveShopSettingsBatch({ productOrder: ids }, "Sortierung");
+    // auch lokal anwenden
+    const pos = new Map(ids.map((id,i)=>[String(id), i]));
+    products.sort((a,b)=>(pos.get(String(a.id))??1e9) - (pos.get(String(b.id))??1e9));
+  }catch(e){
+    console.warn("persistProductOrderFromTable failed", e);
+  }
+}
+function ensurePreviewModal(){
+  let bg = document.getElementById("previewBg");
+  if(bg) return bg;
+  bg = document.createElement("div");
+  bg.id = "previewBg";
+  bg.className = "modalBg";
+  bg.style.zIndex = "200";
+  bg.innerHTML = `
+    <div class="modal">
+      <div class="modalHead">
+        <div><b>👁️ Vorschau</b></div>
+        <button id="btnClosePreview">✖</button>
+      </div>
+      <div class="modalBody" id="previewBody"></div>
+    </div>
+  `;
+  document.body.appendChild(bg);
+  bg.addEventListener("click",(e)=>{ if(e.target.id==="previewBg") bg.style.display="none"; });
+  bg.querySelector("#btnClosePreview").addEventListener("click",()=>bg.style.display="none");
+  return bg;
+}
+function openProductPreview(productId){
+  const p = products.find(x=>String(x.id)===String(productId));
+  if(!p) return;
+  const bg = ensurePreviewModal();
+  const body = bg.querySelector("#previewBody");
+  const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
+  const variants = (typeof getVariants==="function") ? getVariants(p) : [{name:"Standard", multiplier:1}];
+  const badgeOverlay = (typeof badgesToHtml==="function") ? badgesToHtml(p.badges,{where:"overlay"}) : "";
+  const badgeRow = (typeof badgesToHtml==="function") ? badgesToHtml(p.badges,{where:"row"}) : "";
+  body.innerHTML = `
+    <div class="prod" style="max-width:520px; margin:0 auto">
+      ${img ? `
+        <div class="previewBox" style="margin-bottom:10px">
+          ${badgeOverlay || ``}
+          <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
+        </div>
+      ` : ``}
+      <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
+        <div style="min-width:0">
+          <b>${escapeHtml(p.name)}</b>
+          <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
+        </div>
+      </div>
+      ${badgeRow || ``}
+      ${variants.length>1 ? `
+        <div style="height:8px"></div>
+        <select style="width:100%">
+          ${variants.map(v=>`<option>${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`).join("")}
+        </select>
+      ` : ``}
+      <div class="chips">${fmtRes(p.resources || [])}</div>
+      <div style="height:10px"></div>
+      <button class="primary" style="width:100%" disabled>In den Warenkorb</button>
+      <div class="muted" style="margin-top:8px; font-size:12px">Dies ist eine 1:1 Vorschau (Button deaktiviert).</div>
+    </div>
+  `;
+  bg.style.display="flex";
+}
+async function duplicateProduct(productId){
+  const p = products.find(x=>String(x.id)===String(productId));
+  if(!p) return;
+  const payload = {
+    name: String((p.name||"Produkt") + " (Kopie)"),
+    category_id: p.category_id || null,
+    image_url: p.image_url || null,
+    resources: Array.isArray(p.resources) ? p.resources : [],
+    variants: Array.isArray(p.variants) ? p.variants : [],
+    badges: Array.isArray(p.badges) ? p.badges : []
+  };
+  const r = await sb.from("products").insert(payload);
+  if(r.error){
+    console.error(r.error);
+    alert("Duplizieren fehlgeschlagen (RLS?)");
+    return;
+  }
+  await loadPublic();
+  renderAdminProducts();
+  showToast?.("Produkt dupliziert", payload.name, { duration: 1600 });
+}
+async function createBundleFromSelection(selectedIds, bundleMeta){
+  const sel = selectedIds.map(id=>products.find(p=>String(p.id)===String(id))).filter(Boolean);
+  if(!sel.length){ alert("Bitte Produkte auswählen."); return; }
+
+  // Ressourcen summieren
+  const totals = new Map(); // nameLower -> {name, amount, color}
+  sel.forEach(p=>{
+    (p.resources||[]).forEach(r=>{
+      const name = String(r.name||"").trim();
+      if(!name) return;
+      const key = name.toLowerCase();
+      const amt = Math.round(Number(r.amount)||0);
+      if(!Number.isFinite(amt) || amt<=0) return;
+      const prev = totals.get(key) || { name, amount: 0, color: r.color || "#7dd3fc" };
+      prev.amount += amt;
+      if(r.color) prev.color = r.color;
+      totals.set(key, prev);
+    });
+  });
+
+  const resources = Array.from(totals.values()).map(x=>({ name:x.name, amount:x.amount, color:x.color }));
+
+  const payload = {
+    name: String(bundleMeta?.name||"Bundle").trim() || "Bundle",
+    category_id: bundleMeta?.category_id || null,
+    image_url: bundleMeta?.image_url || null,
+    resources,
+    variants: [], // Standard
+    badges: []
+  };
+
+  const r = await sb.from("products").insert(payload);
+  if(r.error){
+    console.error(r.error);
+    alert("Bundle erstellen fehlgeschlagen (RLS?)");
+    return;
+  }
+  await loadPublic();
+  renderAdminProducts();
+  showToast?.("Bundle erstellt", payload.name, { duration: 1800 });
+}
+
 
 /* ========= State ========= */
 let categories = [];
@@ -1194,6 +1347,9 @@ const c = data.colors || {};
 
   const prodRes = await sb.from("products").select("*").order("created_at", {ascending:false});
   products = prodRes.data || [];
+  // Admin-Drag&Drop: gespeicherte Sortierung anwenden
+  try{ applyProductOrder(); }catch(_e){}
+
 
   renderFilter();
   renderProducts();
@@ -1749,9 +1905,35 @@ function renderAdminProducts(){
       <div class="head"><b>Produkte</b></div>
       <div class="body" style="overflow:auto">
         <table>
-          <thead><tr><th>Bild</th><th>Name</th><th>Kategorie</th><th>Badges</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
+          <thead><tr><th></th><th>Bild</th><th>Name</th><th>Kategorie</th><th>Badges</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
           <tbody id="prodTable"></tbody>
         </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px">
+      <div class="head"><b>Bundle-Builder</b><span class="muted" style="font-size:12px">Mehrere Produkte auswählen → Ressourcen werden summiert → neues Bundle erzeugen</span></div>
+      <div class="body">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px">
+          <input id="bundleName" placeholder="Bundle Name (z.B. Weekend Bundle)" />
+          <select id="bundleCat">${catOptions}</select>
+          <input id="bundleImg" placeholder="Bundle Bild URL (optional)" style="grid-column: 1 / -1" />
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="previewBox" id="bundleImgPreviewWrap" style="display:none">
+          <img id="bundleImgPreview" alt="">
+        </div>
+
+        <div style="height:10px"></div>
+
+        <div class="muted" style="font-size:12px; margin-bottom:6px">Produkte auswählen:</div>
+        <div id="bundleList" style="border:1px solid var(--border); border-radius:14px; padding:10px; max-height:240px; overflow:auto; background: rgba(255,255,255,.02)"></div>
+
+        <div style="height:10px"></div>
+        <button class="success" id="btnCreateBundle">✅ Bundle erstellen</button>
+        <span class="muted" style="font-size:12px; margin-left:8px">Das Bundle wird wie „Neues Produkt“ erstellt (inkl. Bild-URL).</span>
       </div>
     </div>
   `;
@@ -1771,6 +1953,66 @@ function renderAdminProducts(){
   };
 
   renderProductsTable();
+
+  // Bundle-Builder UI
+  (function setupBundleBuilder(){
+    const listEl = document.getElementById("bundleList");
+    const btn = document.getElementById("btnCreateBundle");
+    const nameEl = document.getElementById("bundleName");
+    const catEl = document.getElementById("bundleCat");
+    const imgEl = document.getElementById("bundleImg");
+    const prevWrap = document.getElementById("bundleImgPreviewWrap");
+    const prevImg = document.getElementById("bundleImgPreview");
+
+    if(!listEl || !btn || !nameEl || !catEl) return;
+
+    // Liste rendern
+    listEl.innerHTML = products.map(p=>{
+      const img = (p.image_url && String(p.image_url).trim()) ? "🖼️" : "—";
+      return `
+        <label style="display:flex; gap:10px; align-items:flex-start; padding:8px; border-bottom:1px solid rgba(255,255,255,.06)">
+          <input type="checkbox" data-bsel="${escapeHtml(p.id)}" />
+          <div style="min-width:0">
+            <div style="display:flex; gap:8px; align-items:center">
+              <span class="muted" style="font-size:12px">${img}</span>
+              <b>${escapeHtml(p.name)}</b>
+            </div>
+            <div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div>
+          </div>
+        </label>
+      `;
+    }).join("") || `<div class="muted">Keine Produkte</div>`;
+
+    // Bild Preview wie bei „Neues Produkt“
+    function updateBundleImgPreview(){
+      const url = String(imgEl?.value || "").trim();
+      if(!prevWrap || !prevImg) return;
+      if(!url){
+        prevWrap.style.display = "none";
+        prevImg.removeAttribute("src");
+        return;
+      }
+      prevImg.src = url;
+      prevWrap.style.display = "";
+      prevImg.onerror = ()=>{ prevWrap.style.display="none"; };
+    }
+    if(imgEl){
+      imgEl.addEventListener("input", updateBundleImgPreview);
+      updateBundleImgPreview();
+    }
+
+    btn.onclick = async ()=>{
+      const ids = Array.from(listEl.querySelectorAll("input[data-bsel]:checked")).map(x=>x.getAttribute("data-bsel")).filter(Boolean);
+      const meta = {
+        name: String(nameEl.value||"").trim() || "Bundle",
+        category_id: (catEl.value==="none") ? null : catEl.value,
+        image_url: String(imgEl?.value||"").trim() || null
+      };
+      if(ids.length===0){ alert("Bitte mindestens 1 Produkt auswählen."); return; }
+      await createBundleFromSelection(ids, meta);
+    };
+  })();
+
 }
 
 function getEditorState(){
@@ -2070,29 +2312,80 @@ function renderBadgeChecks(st){
 
 function renderProductsTable(){
   const tb = document.getElementById("prodTable");
-  tb.innerHTML = products.length ? "" : `<tr><td colspan="6" class="muted">Keine Produkte</td></tr>`;
+  tb.innerHTML = products.length ? "" : `<tr><td colspan="7" class="muted">Keine Produkte</td></tr>`;
+
+  // Drag & Drop Zustand
+  let dragId = null;
 
   products.forEach(p=>{
     const tr = document.createElement("tr");
+    tr.setAttribute("data-id", p.id);
+    tr.draggable = true;
+
     tr.innerHTML = `
-      <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:70px;height:44px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"
-            onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
+      <td style="width:44px"><span title="Ziehen zum Sortieren" style="cursor:grab; font-weight:900" aria-label="drag">⠿</span></td>
+      <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:56px;height:40px;object-fit:cover;border-radius:10px;border:1px solid var(--border)" onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
       <td><b>${escapeHtml(p.name)}</b><div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div></td>
       <td class="muted">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
       <td>${badgesToHtml(p.badges, { where: "row" }) || `<span class="muted">—</span>`}</td>
       <td>${fmtRes(p.resources)}</td>
-      <td>
+      <td style="white-space:nowrap">
         <button class="primary" data-edit="${p.id}">Bearbeiten</button>
+        <button data-prev="${p.id}">Vorschau</button>
+        <button class="success" data-dup="${p.id}">Duplizieren</button>
       </td>
     `;
     tb.appendChild(tr);
+
+    // DnD
+    tr.addEventListener("dragstart",(e)=>{
+      dragId = tr.getAttribute("data-id");
+      tr.style.opacity = ".55";
+      try{ e.dataTransfer.setData("text/plain", dragId || ""); }catch(_){}
+    });
+    tr.addEventListener("dragend",()=>{
+      tr.style.opacity = "";
+    });
+    tr.addEventListener("dragover",(e)=>{
+      e.preventDefault();
+    });
+    tr.addEventListener("drop", async (e)=>{
+      e.preventDefault();
+      const fromId = dragId || (()=>{
+        try{ return e.dataTransfer.getData("text/plain"); }catch(_){ return null; }
+      })();
+      const toId = tr.getAttribute("data-id");
+      if(!fromId || !toId || fromId===toId) return;
+
+      const fromEl = tb.querySelector(`tr[data-id="${CSS.escape(fromId)}"]`);
+      const toEl = tb.querySelector(`tr[data-id="${CSS.escape(toId)}"]`);
+      if(!fromEl || !toEl) return;
+
+      // Insert before/after based on mouse position
+      const rect = toEl.getBoundingClientRect();
+      const before = (e.clientY - rect.top) < rect.height/2;
+      if(before) tb.insertBefore(fromEl, toEl);
+      else tb.insertBefore(fromEl, toEl.nextSibling);
+
+      await persistProductOrderFromTable(tb);
+      showToast?.("Sortierung", "Gespeichert ✅", { duration: 1200 });
+      // Shop-Liste sofort neu rendern (damit du Reihenfolge siehst)
+      try{ renderProducts(); }catch(_){}
+    });
   });
 
   tb.querySelectorAll("[data-edit]").forEach(b=>b.onclick=()=>{
     editProductId = b.getAttribute("data-edit");
     renderAdminProducts();
   });
+  tb.querySelectorAll("[data-prev]").forEach(b=>b.onclick=()=>{
+    openProductPreview(b.getAttribute("data-prev"));
+  });
+  tb.querySelectorAll("[data-dup]").forEach(b=>b.onclick=()=>{
+    duplicateProduct(b.getAttribute("data-dup"));
+  });
 }
+
 
 /* ========= Admin: Theme (mehr Farben + Live Vorschau + Speichern) ========= */
 function renderAdminTheme(){
