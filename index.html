@@ -1278,7 +1278,39 @@ function renderProducts(){
   }
 
   list.querySelectorAll("[data-fav]").forEach(b=>{
-    b.onclick = ()=>toggleFav(b.getAttribute("data-fav"));
+    b.onclick = (e)=>{
+      e?.stopPropagation?.();
+      toggleFav(b.getAttribute("data-fav"));
+    };
+  });
+
+  // Add-to-cart buttons (inkl. Varianten)
+  list.querySelectorAll("[data-add]").forEach(btn=>{
+    btn.onclick = (e)=>{
+      e?.stopPropagation?.();
+      const pid = btn.getAttribute("data-add");
+      const card = btn.closest(".prod");
+      const sel = card ? card.querySelector('.variantSel[data-vid="'+pid+'"]') : null;
+
+      let vName = "Standard";
+      let vMult = 1;
+
+      if(sel && sel.selectedOptions && sel.selectedOptions[0]){
+        const opt = sel.selectedOptions[0];
+        vName = opt.dataset.n || opt.textContent || "Standard";
+        vMult = Number(opt.dataset.m || 1) || 1;
+      }else{
+        // Fallback: erste Variante aus Daten
+        try{
+          const p = products.find(x=>String(x.id)===String(pid));
+          const v = (typeof getVariants==="function") ? getVariants(p) : [{name:"Standard", multiplier:1}];
+          vName = v?.[0]?.name || "Standard";
+          vMult = Number(v?.[0]?.multiplier || 1) || 1;
+        }catch(_e){}
+      }
+
+      addToCartUX(btn, pid, vName, vMult);
+    };
   });
 }
 
