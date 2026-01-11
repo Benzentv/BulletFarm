@@ -388,6 +388,20 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     color: rgba(235,245,255,.8);
     white-space:nowrap;
   }
+  .promoBar .status{
+    font-size: 12px;
+    font-weight: 800;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.18);
+    background: rgba(0,0,0,.25);
+    white-space: nowrap;
+  }
+  .promoBar .status.tone-ok{ border-color: rgba(52,211,153,.45); }
+  .promoBar .status.tone-warn{ border-color: rgba(251,191,36,.45); }
+  .promoBar .status.tone-danger{ border-color: rgba(251,113,133,.50); }
+
+
 
 
   /* Promo: Ampel-Logik / Pulsieren bei < 60 Min */
@@ -1251,6 +1265,17 @@ function promoAccentFromLeftMs(leftMs){
 
 window.promoAccentFromLeftMs = promoAccentFromLeftMs;
 
+// Status-Badge Text je nach Restzeit
+function promoStatusFromLeftMs(leftMs){
+  if(leftMs == null || !isFinite(leftMs)) return null;
+  const leftMin = leftMs / 60000;
+  if(leftMin > 240) return { text: "🟢 Läuft", tone: "ok" };
+  if(leftMin >= 60) return { text: "🟡 Bald vorbei", tone: "warn" };
+  return { text: "🔴 Letzte Chance", tone: "danger" };
+}
+window.promoStatusFromLeftMs = promoStatusFromLeftMs;
+
+
 
 
 
@@ -1373,6 +1398,16 @@ window.promoAccentFromLeftMs = promoAccentFromLeftMs;
             box.style.borderColor = `${accent2}55`;
             box.style.background = `linear-gradient(90deg, ${accent2}22, rgba(20,25,35,.35))`;
             box.classList.toggle("promo-urgent", !!a2.urgent);
+            // Status-Badge live aktualisieren
+            const status2 = promoStatusFromLeftMs(left);
+            const stEl = box.querySelector("[data-promo-status]");
+            if(stEl && status2){
+              stEl.textContent = status2.text;
+              stEl.classList.toggle("tone-ok", status2.tone === "ok");
+              stEl.classList.toggle("tone-warn", status2.tone === "warn");
+              stEl.classList.toggle("tone-danger", status2.tone === "danger");
+            }
+
           }else if(countEl){
             countEl.textContent = "";
             // Kein Countdown -> Admin-Farbe nutzen, kein Puls
@@ -1380,6 +1415,12 @@ window.promoAccentFromLeftMs = promoAccentFromLeftMs;
             box.style.borderColor = `${baseAccent2}55`;
             box.style.background = `linear-gradient(90deg, ${baseAccent2}22, rgba(20,25,35,.35))`;
             box.classList.remove("promo-urgent");
+            const stEl = box.querySelector("[data-promo-status]");
+            if(stEl){
+              stEl.textContent = "";
+              stEl.classList.remove("tone-ok","tone-warn","tone-danger");
+            }
+
           }
         }, 250);
       }
@@ -1394,6 +1435,9 @@ window.promoAccentFromLeftMs = promoAccentFromLeftMs;
       const leftMs = hasCountdown ? (endAtMs - now) : null;
       const a = promoAccentFromLeftMs(leftMs);
       const accent = a.accent || baseAccent;
+
+      const status = promoStatusFromLeftMs(leftMs);
+      const statusHtml = status ? `<div class="status tone-${status.tone}" data-promo-status>${escapeHtml(status.text)}</div>` : ``;
 
       let countHtml = "";
       if(hasCountdown){
@@ -1422,6 +1466,7 @@ window.promoAccentFromLeftMs = promoAccentFromLeftMs;
           <div class="sub">${escapeHtml(sub)}</div>
         </div>
         <div class="right">
+          ${statusHtml}
           ${pill ? `<div class="pill">${escapeHtml(pill)}</div>` : ``}
           ${countHtml}
         </div>
