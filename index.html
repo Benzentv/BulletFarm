@@ -834,8 +834,7 @@ async function duplicateProduct(productId){
       const autoText = head + lines;
       return (base ? (base + "\n\n" + autoText) : autoText) || null;
     })()
-  }
-};
+  };
 
   const r = await sb.from("products").insert(payload);
   if(r.error){
