@@ -134,6 +134,15 @@
       background: rgba(255,255,255,.03);
       border-radius:14px;
       padding:12px;
+
+      /* Align "In den Warenkorb" buttons across cards (Bundles/Alle) */
+      display:flex;
+      flex-direction:column;
+      height:100%;
+    }
+    /* Push the primary add-to-cart button to the bottom of the card */
+    .prod > button.primary[data-add]{
+      margin-top:auto;
     }
     table{width:100%; border-collapse:collapse; font-size:13px}
     th,td{border-bottom:1px solid var(--border); padding:10px 8px; vertical-align:top}
