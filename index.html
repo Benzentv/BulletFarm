@@ -3314,14 +3314,24 @@ function renderAdminPromo(){
     if(!c || !c.enabled){
       box.style.display = "none";
       box.innerHTML = "";
+      box.classList.remove("promo-urgent");
       return;
     }
 
     const endMs = c.endAt ? new Date(c.endAt).getTime() : null;
     const hasCountdown = endMs && !isNaN(endMs);
 
-    box.style.borderColor = `${c.color}55`;
-    box.style.background = `linear-gradient(90deg, ${c.color}22, rgba(20,25,35,.35))`;
+    const nowMs = Date.now();
+    const leftMs = hasCountdown ? (endMs - nowMs) : null;
+
+    const a = promoAccentFromLeftMs(leftMs);
+    const accent = a.accent || (c.color || "#34d399");
+
+    box.style.borderColor = `${accent}55`;
+    box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
+    box.classList.toggle("promo-urgent", !!a.urgent);
+
+    const countdownText = hasCountdown ? formatCountdown(Math.max(0, leftMs)) : "";
 
     box.innerHTML = `
       <div class="left">
@@ -3330,7 +3340,7 @@ function renderAdminPromo(){
       </div>
       <div class="right">
         ${c.pill ? `<div class="pill">${escapeHtml(c.pill)}</div>` : ``}
-        ${hasCountdown ? `<div class="count">00:00</div>` : ``}
+        ${hasCountdown ? `<div class="count">${escapeHtml(countdownText)}</div>` : ``}
       </div>
     `;
     box.style.display = "";
@@ -3366,9 +3376,19 @@ function renderAdminPromo(){
   };
 
   // events
-  renderSelect();
-  fillForm();
-  renderPreview();
+  renderSelect\(\);
+  fillForm\(\);
+  renderPreview\(\);
+
+  // Live-Update für Admin-Preview (echte Restzeit + Ampel-Farbe)
+  if(window.__adminPreviewTimer) clearInterval(window.__adminPreviewTimer);
+  window.__adminPreviewTimer = setInterval(()=>{
+    const box = document.getElementById("promoPreviewBox2");
+    if(!box) return;
+    // nur aktualisieren, wenn Preview sichtbar ist
+    if(box.style.display === "none") return;
+    renderPreview();
+  }, 1000);
 
   selEl.onchange = ()=>{ fillForm(); renderPreview(); };
 
