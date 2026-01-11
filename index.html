@@ -166,6 +166,37 @@
   padding:6px 10px;
   backdrop-filter: blur(6px);
 }
+
+/* === Product Badges (Admin-zuweisbar) === */
+.badgeStack{
+  position:absolute;
+  top:8px;
+  left:8px;
+  z-index:3;
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  max-width: calc(100% - 64px);
+}
+.badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  font-weight:900;
+  border:1px solid var(--border);
+  background: rgba(17,24,38,.72);
+  backdrop-filter: blur(6px);
+  padding:6px 10px;
+  border-radius:999px;
+  line-height:1;
+  white-space:nowrap;
+}
+.badge.b-popular{ border-color: rgba(251,113,133,.55); }
+.badge.b-premium{ border-color: rgba(125,211,252,.65); }
+.badge.b-sale20{ border-color: rgba(52,211,153,.55); }
+.badge.b-sale50{ border-color: rgba(251,113,133,.55); box-shadow: 0 0 0 3px rgba(251,113,133,.08) inset; }
+.badgeRow{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
 
 /* === UX Upgrades: Cart Sticky Summary + Animations + Favorites === */
@@ -528,6 +559,31 @@ let sb = null;
 /* ========= State ========= */
 let categories = [];
 let products = [];
+
+
+/* ========= Badges (Admin-zuweisbar) ========= */
+const BADGE_OPTIONS = [
+  { key: "popular", label: "🔥 Beliebt" },
+  { key: "premium", label: "💎 Premium" },
+  { key: "sale20",  label: "💸 20 % Rabatt" },
+  { key: "sale50",  label: "💸 50 % Rabatt" },
+];
+function normalizeBadges(b){
+  const arr = Array.isArray(b) ? b : (b ? [b] : []);
+  const allowed = new Set(BADGE_OPTIONS.map(x=>x.key));
+  // unique + nur erlaubte keys
+  return Array.from(new Set(arr.map(x=>String(x||"").trim()).filter(x=>allowed.has(x))));
+}
+function badgesToHtml(badges, opts={}){
+  const where = opts.where || "row"; // 'row' oder 'overlay'
+  const keys = normalizeBadges(badges);
+  if(keys.length===0) return "";
+  const map = Object.fromEntries(BADGE_OPTIONS.map(x=>[x.key, x.label]));
+  const items = keys.map(k=>`<span class="badge b-${k}">${escapeHtml(map[k] || k)}</span>`).join("");
+  return where==="overlay"
+    ? `<div class="badgeStack">${items}</div>`
+    : `<div class="badgeRow">${items}</div>`;
+}
 let cart = JSON.parse(localStorage.getItem("bf_cart") || "[]");
 let favs = new Set(JSON.parse(localStorage.getItem("bf_favs") || "[]"));
 // Migration: alte Cart-Einträge ohne Varianten/Key
@@ -643,6 +699,8 @@ function renderProducts(){
     const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
     const variants = getVariants(p);
     const favActive = isFav(p.id);
+    const badgeOverlay = badgesToHtml(p.badges, { where: 'overlay' });
+    const badgeRow = badgesToHtml(p.badges, { where: 'row' });
     const variantOptions = variants.map((v,idx)=>
       `<option value="${idx}" data-m="${v.multiplier}" data-n="${escapeHtml(v.name)}">${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`
     ).join("");
@@ -651,6 +709,7 @@ function renderProducts(){
       ${img ? `
         <div class="previewBox" style="margin-bottom:10px">
           <button class="favBtn favOverlay ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">${favActive ? "★" : "☆"}</button>
+          ${badgeOverlay || ``}
           <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
         </div>
       ` : ``}
@@ -664,6 +723,8 @@ function renderProducts(){
           ${favActive ? "★" : "☆"}
         </button>
       </div>
+
+      ${badgeRow || ``}
 
       ${variants.length>1 ? `
         <div style="height:8px"></div>
@@ -1264,6 +1325,14 @@ function renderAdminProducts(){
           <input id="pImg" placeholder="Bild URL (optional)" style="grid-column: 1 / -1" />
         </div>
 
+        <div style="height:12px"></div>
+
+        <div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
+          <b>Badges</b>
+          <div class="muted" style="font-size:12px; margin-top:4px">Im Shop sichtbar (pro Produkt)</div>
+          <div id="badgeChecks" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px"></div>
+        </div>
+
         <div style="height:10px"></div>
 
         <div class="previewBox" id="imgPreviewWrap" style="display:none">
@@ -1315,7 +1384,7 @@ function renderAdminProducts(){
       <div class="head"><b>Produkte</b></div>
       <div class="body" style="overflow:auto">
         <table>
-          <thead><tr><th>Bild</th><th>Name</th><th>Kategorie</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
+          <thead><tr><th>Bild</th><th>Name</th><th>Kategorie</th><th>Badges</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
           <tbody id="prodTable"></tbody>
         </table>
       </div>
@@ -1343,6 +1412,7 @@ function getEditorState(){
   return {
     resources: [],
     variants: [],
+    badges: [],
     setResources(newRes){
       this.resources = newRes;
       renderResChips(this);
@@ -1350,6 +1420,10 @@ function getEditorState(){
     setVariants(newVars){
       this.variants = newVars;
       renderVarChips(this);
+    },
+    setBadges(newBadges){
+      this.badges = normalizeBadges(newBadges);
+      renderBadgeChecks(this);
     }
   };
 }
@@ -1402,7 +1476,13 @@ document.getElementById("btnAddVar").onclick = ()=>{
 // Default: Standard-Variante, wenn leer
 if(!Array.isArray(st.variants) || st.variants.length===0){
   st.setVariants([{ name:"Standard", multiplier: 1 }]);
+    st.badges = [];
+    renderBadgeChecks(st);
 }
+
+// Default: keine Badges
+if(!Array.isArray(st.badges)) st.badges = [];
+renderBadgeChecks(st);
 
   // Speichern/Hinzufügen
   document.getElementById("btnSaveProd").onclick = async ()=>{
@@ -1417,7 +1497,8 @@ if(!Array.isArray(st.variants) || st.variants.length===0){
       category_id: (cat==="none") ? null : cat,
       image_url,
       resources: st.resources || [],
-      variants: (st.variants || []).filter(v=>v && String(v.name||'').trim())
+      variants: (st.variants || []).filter(v=>v && String(v.name||'').trim()),
+      badges: normalizeBadges(st.badges || [])
     };
 
     let r;
@@ -1476,6 +1557,8 @@ function fillEditorFromProduct(st, productId){
   updateImagePreview(p.image_url || "");
   st.setResources(Array.isArray(p.resources) ? p.resources : []);
   st.setVariants(Array.isArray(p.variants) && p.variants.length ? p.variants : [{ name:"Standard", multiplier: 1 }]);
+  st.badges = normalizeBadges(p.badges);
+  renderBadgeChecks(st);
 }
 
 function updateImagePreview(url){
@@ -1542,9 +1625,37 @@ function renderVarChips(st){
   });
 }
 
+
+function renderBadgeChecks(st){
+  const box = document.getElementById("badgeChecks");
+  if(!box) return;
+
+  const selected = new Set(normalizeBadges(st?.badges));
+  box.innerHTML = BADGE_OPTIONS.map(b=>{
+    const checked = selected.has(b.key) ? "checked" : "";
+    return `
+      <label class="chip" style="cursor:pointer; user-select:none">
+        <input type="checkbox" data-badge="${b.key}" ${checked} style="width:16px; height:16px; accent-color: var(--primary)" />
+        <span>${escapeHtml(b.label)}</span>
+      </label>
+    `;
+  }).join("");
+
+  box.querySelectorAll("input[data-badge]").forEach(inp=>{
+    inp.onchange = ()=>{
+      const key = inp.getAttribute("data-badge");
+      const next = new Set(normalizeBadges(st.badges));
+      if(inp.checked) next.add(key); else next.delete(key);
+      st.badges = Array.from(next);
+      // optional small feedback
+      try{ showToast("Badges", "Gespeichert im Editor (Speichern klicken).", { duration: 900 }); }catch(e){}
+    };
+  });
+}
+
 function renderProductsTable(){
   const tb = document.getElementById("prodTable");
-  tb.innerHTML = products.length ? "" : `<tr><td colspan="5" class="muted">Keine Produkte</td></tr>`;
+  tb.innerHTML = products.length ? "" : `<tr><td colspan="6" class="muted">Keine Produkte</td></tr>`;
 
   products.forEach(p=>{
     const tr = document.createElement("tr");
@@ -1553,6 +1664,7 @@ function renderProductsTable(){
             onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
       <td><b>${escapeHtml(p.name)}</b><div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div></td>
       <td class="muted">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
+      <td>${badgesToHtml(p.badges, { where: "row" }) || `<span class="muted">—</span>`}</td>
       <td>${fmtRes(p.resources)}</td>
       <td>
         <button class="primary" data-edit="${p.id}">Bearbeiten</button>
