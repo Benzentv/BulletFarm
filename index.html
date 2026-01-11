@@ -1306,6 +1306,35 @@ async function loadPublic(){
       const endAtMs = active.endAt ? new Date(active.endAt).getTime() : null;
       const hasCountdown = !!endAtMs && !isNaN(endAtMs);
 
+      const timeLeftMs = hasCountdown ? (endAtMs - now) : null;
+      const timeLeftMin = (timeLeftMs != null) ? (timeLeftMs / 60000) : null;
+
+      /* === AUTOMATISCHE FARBLOGIK je nach Restzeit ===
+         > 360 min  -> Grün
+         180–60 min -> Gelb
+         < 60 min   -> Rot
+         (Zwischen 360 und 180 bleibt es Grün)
+      */
+      let stateColor = "#34d399"; // 🟢 Grün
+      let stateText  = "Aktion läuft entspannt";
+
+      if(timeLeftMin != null){
+        if(timeLeftMin < 60){
+          stateColor = "#fb7185"; // 🔴 Rot
+          stateText  = "Letzte Chance";
+        }else if(timeLeftMin <= 180){
+          stateColor = "#facc15"; // 🟡 Gelb
+          stateText  = "Bald vorbei";
+        }else if(timeLeftMin > 360){
+          stateColor = "#34d399"; // 🟢 Grün
+          stateText  = "Aktion läuft entspannt";
+        }else{
+          // 360..180 -> weiterhin Grün
+          stateColor = "#34d399";
+          stateText  = "Aktion läuft entspannt";
+        }
+      }
+
       // Start timer once
       if(!__promoTimer){
         __promoTimer = setInterval(()=>{
@@ -1326,6 +1355,16 @@ async function loadPublic(){
               return;
             }
             countEl.textContent = formatCountdown(left);
+
+            // Farbwechsel live mitziehen
+            const minLeft = left / 60000;
+            let c = "#34d399";
+            if(minLeft < 60) c = "#fb7185";
+            else if(minLeft <= 180) c = "#facc15";
+            else c = "#34d399";
+
+            box.style.borderColor = `${c}AA`;
+            box.style.background = `linear-gradient(90deg, ${c}33, rgba(20,25,35,.35))`;
           }else if(countEl){
             countEl.textContent = "";
           }
@@ -1333,10 +1372,10 @@ async function loadPublic(){
       }
 
       const title = (active.title || "Aktion").trim();
-      const sub = active.sub || "Zeitlich begrenzte Aktion";
+      // wenn Admin-Subtext gesetzt ist, nutzen; sonst Status-Text anzeigen
+      const sub = (active.sub && String(active.sub).trim()) ? active.sub : stateText;
       const pill = active.pill || "";
-      const icon = active.icon || "";
-      const accent = active.color || "#34d399";
+      const icon = active.icon || "⏰";
 
       let countHtml = "";
       if(hasCountdown){
@@ -1352,9 +1391,9 @@ async function loadPublic(){
         countHtml = `<div class="count" data-promo-count style="opacity:.0; width:0; padding:0; border:0"></div>`;
       }
 
-      // Styling via inline vars
-      box.style.borderColor = `${accent}55`;
-      box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
+      // Styling via inline vars (Farbe kommt jetzt aus Restzeit-Logik)
+      box.style.borderColor = `${stateColor}AA`;
+      box.style.background = `linear-gradient(90deg, ${stateColor}33, rgba(20,25,35,.35))`;
 
       box.innerHTML = `
         <div class="left">
