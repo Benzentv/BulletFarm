@@ -197,6 +197,57 @@
 .badge.b-sale20{ border-color: rgba(52,211,153,.55); }
 .badge.b-sale50{ border-color: rgba(251,113,133,.55); box-shadow: 0 0 0 3px rgba(251,113,133,.08) inset; }
 .badgeRow{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+
+/* === Bundles (Anzeige im Shop) === */
+.bundleBadge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  font-weight:900;
+  border:1px solid var(--border);
+  background: rgba(17,24,38,72);
+  backdrop-filter: blur(6px);
+  padding:6px 10px;
+  border-radius:999px;
+  line-height:1;
+  white-space:nowrap;
+}
+.bundleBadge{ border-color: rgba(167,139,250,60); } /* lila */
+.bundleSection{
+  margin-top:10px;
+  border:1px solid var(--border);
+  background: rgba(255,255,255,02);
+  border-radius:12px;
+  padding:10px;
+}
+.bundleSectionTitle{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  font-weight:900;
+  font-size:13px;
+  color: var(--text);
+}
+.bundleList{
+  margin:8px 0 0 0;
+  padding-left:18px;
+  color: var(--text);
+  font-size:13px;
+}
+.bundleList li{ margin:3px 0; }
+.bundleMetaRow{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  margin-top:8px;
+}
+.bundleMini{
+  font-size:12px;
+  color: var(--muted);
+}
+
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
 
 /* === UX Upgrades: Cart Sticky Summary + Animations + Favorites === */
@@ -387,31 +438,6 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     font-size: 12px;
     color: rgba(235,245,255,.8);
     white-space:nowrap;
-  }
-  .promoBar .status{
-    font-size: 12px;
-    font-weight: 800;
-    padding: 6px 10px;
-    border-radius: 999px;
-    border: 1px solid rgba(255,255,255,.18);
-    background: rgba(0,0,0,.25);
-    white-space: nowrap;
-  }
-  .promoBar .status.tone-ok{ border-color: rgba(52,211,153,.45); }
-  .promoBar .status.tone-warn{ border-color: rgba(251,191,36,.45); }
-  .promoBar .status.tone-danger{ border-color: rgba(251,113,133,.50); }
-
-
-
-
-  /* Promo: Ampel-Logik / Pulsieren bei < 60 Min */
-  .promoBar.promo-urgent{
-    animation: promoPulse 1.05s ease-in-out infinite;
-  }
-  @keyframes promoPulse{
-    0%   { transform: scale(1);   filter: brightness(1); }
-    50%  { transform: scale(1.015); filter: brightness(1.12); }
-    100% { transform: scale(1);   filter: brightness(1); }
   }
 
 </style>
@@ -740,12 +766,16 @@ function openProductPreview(productId){
         </div>
       </div>
       ${badgeRow || ``}
+      ${bundleCountBadgeHtml(p) || ``}
+      ${bundleSectionHtml(p) || ``}
       ${variants.length>1 ? `
         <div style="height:8px"></div>
         <select style="width:100%">
           ${variants.map(v=>`<option>${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`).join("")}
         </select>
       ` : ``}
+      ${bundleSectionHtml(p) || ``}
+
       <div class="chips">${fmtRes(p.resources || [])}</div>
       <div style="height:10px"></div>
       <button class="primary" style="width:100%" disabled>In den Warenkorb</button>
@@ -846,6 +876,50 @@ function badgesToHtml(badges, opts={}){
     ? `<div class="badgeStack">${items}</div>`
     : `<div class="badgeRow">${items}</div>`;
 }
+
+/* ========= Bundles (Builder + Shop Anzeige) ========= */
+function normalizeBundleItems(items){
+  // akzeptiert ids oder {id,name} Objekte
+  const arr = Array.isArray(items) ? items : [];
+  return arr.map(x=>{
+    if(x && typeof x === "object"){
+      return { id: String(x.id||"").trim(), name: String(x.name||"").trim() };
+    }
+    return { id: String(x||"").trim(), name: "" };
+  }).filter(x=>x.id);
+}
+function bundleCountBadgeHtml(p){
+  const items = normalizeBundleItems(p?.bundle_items);
+  if(!items.length) return "";
+  const n = items.length;
+  const label = `🧩 Bundle enthält ${n} ${n===1 ? "Produkt" : "Produkte"}`;
+  return `<div class="bundleMetaRow"><span class="bundleBadge">${escapeHtml(label)}</span></div>`;
+}
+function bundleSectionHtml(p){
+  const items = normalizeBundleItems(p?.bundle_items);
+  const desc = String(p?.description||"").trim();
+  if(!items.length && !desc) return "";
+  const listHtml = items.length ? `<ul class="bundleList">${items.map(it=>`<li>${escapeHtml(it.name || it.id)}</li>`).join("")}</ul>` : "";
+  const descHtml = desc ? `<div class="bundleMini" style="margin-top:6px; white-space:pre-wrap">${escapeHtml(desc)}</div>` : "";
+  const title = items.length ? "🛒 Bundle-Inhalt" : "🛒 Beschreibung";
+  return `
+    <div class="bundleSection">
+      <div class="bundleSectionTitle">
+        <span>${title}</span>
+        ${items.length ? `<span class="bundleMini">${items.length}×</span>` : ``}
+      </div>
+      ${listHtml}
+      ${descHtml}
+    </div>
+  `;
+}
+function buildBundleAutoDescription(selectedProducts){
+  const names = (selectedProducts||[]).map(p=>String(p?.name||"").trim()).filter(Boolean);
+  if(names.length===0) return "";
+  // simple, shopfreundlich
+  return "Enthält:\n" + names.map(n=>`• ${n}`).join("\n");
+}
+
 let cart = JSON.parse(localStorage.getItem("bf_cart") || "[]");
 let favs = new Set(JSON.parse(localStorage.getItem("bf_favs") || "[]"));
 // Migration: alte Cart-Einträge ohne Varianten/Key
@@ -989,6 +1063,9 @@ function renderProducts(){
       </div>
 
       ${!img ? (badgeRow || ``) : ``}
+
+      
+      ${bundleCountBadgeHtml(p) || ``}
 
       ${variants.length>1 ? `
         <div style="height:8px"></div>
@@ -1247,37 +1324,6 @@ async function loadPublic(){
       const pad = (n)=>String(n).padStart(2,"0");
       return (hh>0) ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
     }
-window.formatCountdown = formatCountdown;
-
-
-/* ===== Promo Ampel Logik (global, für Admin-Preview & Shop) =====
-   > 240 min => Grün, 240–60 min => Gelb, < 60 min => Rot + Pulsieren
-*/
-function promoAccentFromLeftMs(leftMs){
-  if(leftMs == null || !isFinite(leftMs)){
-    return { accent: null, urgent: false };
-  }
-  const leftMin = leftMs / 60000;
-  if(leftMin > 240) return { accent: "#34d399", urgent: false }; // 🟢
-  if(leftMin >= 60) return { accent: "#fbbf24", urgent: false }; // 🟡
-  return { accent: "#fb7185", urgent: true };                    // 🔴
-}
-
-window.promoAccentFromLeftMs = promoAccentFromLeftMs;
-
-// Status-Badge Text je nach Restzeit
-function promoStatusFromLeftMs(leftMs){
-  if(leftMs == null || !isFinite(leftMs)) return null;
-  const leftMin = leftMs / 60000;
-  if(leftMin > 240) return { text: "🟢 Läuft", tone: "ok" };
-  if(leftMin >= 60) return { text: "🟡 Bald vorbei", tone: "warn" };
-  return { text: "🔴 Letzte Chance", tone: "danger" };
-}
-window.promoStatusFromLeftMs = promoStatusFromLeftMs;
-
-
-
-
 
     function getPromoCampaigns(){
       const settings = window.__shopSettings || {};
@@ -1390,37 +1436,8 @@ window.promoStatusFromLeftMs = promoStatusFromLeftMs;
               return;
             }
             countEl.textContent = formatCountdown(left);
-
-            // Ampel-Farbe + Puls live aktualisieren
-            const baseAccent2 = active2.color || "#34d399";
-            const a2 = promoAccentFromLeftMs(left);
-            const accent2 = a2.accent || baseAccent2;
-            box.style.borderColor = `${accent2}55`;
-            box.style.background = `linear-gradient(90deg, ${accent2}22, rgba(20,25,35,.35))`;
-            box.classList.toggle("promo-urgent", !!a2.urgent);
-            // Status-Badge live aktualisieren
-            const status2 = promoStatusFromLeftMs(left);
-            const stEl = box.querySelector("[data-promo-status]");
-            if(stEl && status2){
-              stEl.textContent = status2.text;
-              stEl.classList.toggle("tone-ok", status2.tone === "ok");
-              stEl.classList.toggle("tone-warn", status2.tone === "warn");
-              stEl.classList.toggle("tone-danger", status2.tone === "danger");
-            }
-
           }else if(countEl){
             countEl.textContent = "";
-            // Kein Countdown -> Admin-Farbe nutzen, kein Puls
-            const baseAccent2 = active2.color || "#34d399";
-            box.style.borderColor = `${baseAccent2}55`;
-            box.style.background = `linear-gradient(90deg, ${baseAccent2}22, rgba(20,25,35,.35))`;
-            box.classList.remove("promo-urgent");
-            const stEl = box.querySelector("[data-promo-status]");
-            if(stEl){
-              stEl.textContent = "";
-              stEl.classList.remove("tone-ok","tone-warn","tone-danger");
-            }
-
           }
         }, 250);
       }
@@ -1429,19 +1446,11 @@ window.promoStatusFromLeftMs = promoStatusFromLeftMs;
       const sub = active.sub || "Zeitlich begrenzte Aktion";
       const pill = active.pill || "";
       const icon = active.icon || "";
-      const baseAccent = active.color || "#34d399";
-
-      // Restzeit bestimmen (nur wenn Countdown vorhanden)
-      const leftMs = hasCountdown ? (endAtMs - now) : null;
-      const a = promoAccentFromLeftMs(leftMs);
-      const accent = a.accent || baseAccent;
-
-      const status = promoStatusFromLeftMs(leftMs);
-      const statusHtml = status ? `<div class="status tone-${status.tone}" data-promo-status>${escapeHtml(status.text)}</div>` : ``;
+      const accent = active.color || "#34d399";
 
       let countHtml = "";
       if(hasCountdown){
-        const left = leftMs;
+        const left = endAtMs - now;
         if(left <= 0){
           // abgelaufen -> evtl. nächste Aktion
           box.style.display = "none";
@@ -1457,16 +1466,12 @@ window.promoStatusFromLeftMs = promoStatusFromLeftMs;
       box.style.borderColor = `${accent}55`;
       box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
 
-      // Pulsieren bei < 60 Minuten
-      box.classList.toggle("promo-urgent", !!a.urgent);
-
       box.innerHTML = `
         <div class="left">
           <div class="title">${escapeHtml((icon ? icon + " " : "") + title)}</div>
           <div class="sub">${escapeHtml(sub)}</div>
         </div>
         <div class="right">
-          ${statusHtml}
           ${pill ? `<div class="pill">${escapeHtml(pill)}</div>` : ``}
           ${countHtml}
         </div>
@@ -2124,6 +2129,12 @@ function renderAdminProducts(){
           <input id="bundleName" placeholder="Bundle Name (z.B. Weekend Bundle)" />
           <select id="bundleCat">${catOptions}</select>
           <input id="bundleImg" placeholder="Bundle Bild URL (optional)" style="grid-column: 1 / -1" />
+          <textarea id="bundleDesc" placeholder="Bundle Beschreibung (optional) – erscheint im Shop" style="grid-column: 1 / -1; min-height:84px"></textarea>
+          <label style="grid-column: 1 / -1; display:flex; gap:10px; align-items:center; font-size:12px" class="muted">
+            <input type="checkbox" id="bundleAutoDesc" checked>
+            Produkte automatisch als Liste in die Beschreibung übernehmen (empfohlen)
+          </label>
+
         </div>
 
         <div style="height:10px"></div>
@@ -2167,6 +2178,8 @@ function renderAdminProducts(){
     const nameEl = document.getElementById("bundleName");
     const catEl = document.getElementById("bundleCat");
     const imgEl = document.getElementById("bundleImg");
+    const descEl = document.getElementById("bundleDesc");
+    const autoDescEl = document.getElementById("bundleAutoDesc");
     const prevWrap = document.getElementById("bundleImgPreviewWrap");
     const prevImg = document.getElementById("bundleImgPreview");
 
@@ -2212,7 +2225,9 @@ function renderAdminProducts(){
       const meta = {
         name: String(nameEl.value||"").trim() || "Bundle",
         category_id: (catEl.value==="none") ? null : catEl.value,
-        image_url: String(imgEl?.value||"").trim() || null
+        image_url: String(imgEl?.value||"").trim() || null,
+        description: String(descEl?.value||"").trim() || "",
+        autoDesc: !!(autoDescEl?.checked)
       };
       if(ids.length===0){ alert("Bitte mindestens 1 Produkt auswählen."); return; }
       await createBundleFromSelection(ids, meta);
@@ -2560,9 +2575,6 @@ function renderProductsTable(){
       const fromId = dragId || (()=>{
         try{ return e.dataTransfer.getData("text/plain"); }catch(_){ return null; }
       })();
-
-
-
       const toId = tr.getAttribute("data-id");
       if(!fromId || !toId || fromId===toId) return;
 
@@ -3368,27 +3380,14 @@ function renderAdminPromo(){
     if(!c || !c.enabled){
       box.style.display = "none";
       box.innerHTML = "";
-      box.classList.remove("promo-urgent");
       return;
     }
 
     const endMs = c.endAt ? new Date(c.endAt).getTime() : null;
     const hasCountdown = endMs && !isNaN(endMs);
 
-    const nowMs = Date.now();
-    const leftMs = hasCountdown ? (endMs - nowMs) : null;
-
-    const a = promoAccentFromLeftMs(leftMs);
-    const accent = a.accent || (c.color || "#34d399");
-
-    box.style.borderColor = `${accent}55`;
-    box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
-    box.classList.toggle("promo-urgent", !!a.urgent);
-
-    const countdownText = hasCountdown ? formatCountdown(Math.max(0, leftMs)) : "";
-
-    const status = (typeof promoStatusFromLeftMs === "function") ? promoStatusFromLeftMs(leftMs) : null;
-    const statusHtml = status ? `<div class="status tone-${status.tone}" data-admin-promo-status>${escapeHtml(status.text)}</div>` : ``;
+    box.style.borderColor = `${c.color}55`;
+    box.style.background = `linear-gradient(90deg, ${c.color}22, rgba(20,25,35,.35))`;
 
     box.innerHTML = `
       <div class="left">
@@ -3397,57 +3396,11 @@ function renderAdminPromo(){
       </div>
       <div class="right">
         ${c.pill ? `<div class="pill">${escapeHtml(c.pill)}</div>` : ``}
-        ${hasCountdown ? `<div class="count">${escapeHtml(countdownText)}</div>` : ``}
+        ${hasCountdown ? `<div class="count">00:00</div>` : ``}
       </div>
     `;
     box.style.display = "";
   };
-  // Live Admin-Preview: echte Restzeit + Badge/Farbe live updaten
-  try{
-    if(window.__adminPromoPreviewTimer) clearInterval(window.__adminPromoPreviewTimer);
-    window.__adminPromoPreviewTimer = setInterval(()=>{
-      const box = document.getElementById("promoPreviewBox2");
-      if(!box || box.style.display==="none") return;
-
-      // read latest values from form (so edits wirken sofort)
-      readFormIntoCampaign();
-      const i = getSelectedIndex();
-      const c = campaigns[i];
-      if(!c || !c.enabled) return;
-
-      const endMs = c.endAt ? new Date(c.endAt).getTime() : null;
-      const hasCountdown = endMs && !isNaN(endMs);
-      const leftMs = hasCountdown ? (endMs - Date.now()) : null;
-
-      const a = (typeof promoAccentFromLeftMs==="function") ? promoAccentFromLeftMs(leftMs) : {accent:null, urgent:false};
-      const accent = a.accent || (c.color || "#34d399");
-      box.style.borderColor = `${accent}55`;
-      box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
-      box.classList.toggle("promo-urgent", !!a.urgent);
-
-      // Countdown Text
-      const countEl = box.querySelector("[data-admin-promo-count]");
-      if(countEl){
-        countEl.textContent = hasCountdown ? formatCountdown(Math.max(0, leftMs)) : "";
-      }
-
-      // Status Badge
-      const st = (typeof promoStatusFromLeftMs==="function") ? promoStatusFromLeftMs(leftMs) : null;
-      const stEl = box.querySelector("[data-admin-promo-status]");
-      if(stEl){
-        if(!st){
-          stEl.textContent = "";
-          stEl.classList.remove("tone-ok","tone-warn","tone-danger");
-        }else{
-          stEl.textContent = st.text;
-          stEl.classList.toggle("tone-ok", st.tone==="ok");
-          stEl.classList.toggle("tone-warn", st.tone==="warn");
-          stEl.classList.toggle("tone-danger", st.tone==="danger");
-        }
-      }
-    }, 250);
-  }catch(e){}
-
 
   // Presets
   const setPreset = (which)=>{
@@ -3482,16 +3435,6 @@ function renderAdminPromo(){
   renderSelect();
   fillForm();
   renderPreview();
-
-  // Live-Update für Admin-Preview (echte Restzeit + Ampel-Farbe)
-  if(window.__adminPreviewTimer) clearInterval(window.__adminPreviewTimer);
-  window.__adminPreviewTimer = setInterval(()=>{
-    const box = document.getElementById("promoPreviewBox2");
-    if(!box) return;
-    // nur aktualisieren, wenn Preview sichtbar ist
-    if(box.style.display === "none") return;
-    renderPreview();
-  }, 1000);
 
   selEl.onchange = ()=>{ fillForm(); renderPreview(); };
 
