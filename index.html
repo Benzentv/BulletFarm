@@ -1872,18 +1872,30 @@ async function persistProductOrder(){
 
   if(!sb) return;
 
-  // Supabase: sort_order updaten (wenn Spalte existiert). Fehler wird still geschluckt.
+  /*
+    WICHTIG:
+    Upsert mit nur {id, sort_order} würde versuchen neue Zeilen anzulegen.
+    Wenn deine Tabelle Pflichtfelder (z.B. name NOT NULL) hat, knallt das mit:
+    "null value in column 'name' violates not-null constraint".
+    Darum machen wir hier reine UPDATEs pro Produkt.
+  */
   try{
-    const updates = products.map((p, i)=>({ id: p.id, sort_order: i+1 }));
-    const r = await sb.from("products").upsert(updates, { onConflict: "id" });
-    if(r.error){
-      console.warn("sort_order update failed", r.error);
+    const ops = products.map((p, i)=>(
+      sb.from("products")
+        .update({ sort_order: i+1 })
+        .eq("id", p.id)
+    ));
+
+    const results = await Promise.all(ops);
+    const anyErr = results.find(r=>r && r.error);
+    if(anyErr){
+      console.warn("sort_order update failed", anyErr.error || anyErr);
       // kein harter Fehler: localStorage reicht als fallback
       return;
     }
     showToast("Sortierung", "Gespeichert ✅", { duration: 1100 });
   }catch(e){
-    // ignore
+    // ignore: localStorage fallback reicht
   }
 }
 
