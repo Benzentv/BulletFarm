@@ -1073,7 +1073,7 @@ function renderProducts(){
     list.appendChild(h2);
   }
   for(const p of mainArr) appendCard(p);
-  }
+
   list.querySelectorAll("[data-add]").forEach(b=>{
     b.onclick = ()=>{
       const pid = b.getAttribute("data-add");
