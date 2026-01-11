@@ -263,6 +263,15 @@
       padding:16px;
       z-index:100;
     }
+
+    /* Preview modal animations */
+    #previewBg{
+      opacity: 0;
+      transition: opacity .16s ease;
+    }
+    #previewBg.show{
+      opacity: 1;
+    }
     .modal{
       width:min(900px,100%);
       max-height:90vh;
@@ -777,6 +786,14 @@ async function persistProductOrderFromTable(tb){
     console.warn("persistProductOrderFromTable failed", e);
   }
 }
+function closePreview(){
+  const bg = document.getElementById("previewBg");
+  if(!bg) return;
+  // fade out
+  bg.classList.remove("show");
+  setTimeout(()=>{ bg.style.display="none"; }, 170);
+}
+
 function ensurePreviewModal(){
   let bg = document.getElementById("previewBg");
   if(bg) return bg;
@@ -794,8 +811,8 @@ function ensurePreviewModal(){
     </div>
   `;
   document.body.appendChild(bg);
-  bg.addEventListener("click",(e)=>{ if(e.target.id==="previewBg") bg.style.display="none"; });
-  bg.querySelector("#btnClosePreview").addEventListener("click",()=>bg.style.display="none");
+  bg.addEventListener("click",(e)=>{ if(e.target.id==="previewBg") closePreview(); });
+  bg.querySelector("#btnClosePreview").addEventListener("click",()=>closePreview());
   return bg;
 }
 function openProductPreview(productId){
@@ -871,6 +888,8 @@ function openProductPreview(productId){
   }
 
   bg.style.display="flex";
+  // fade in
+  requestAnimationFrame(()=>bg.classList.add("show"));
 }
 async function duplicateProduct(productId){
   const p = products.find(x=>String(x.id)===String(productId));
@@ -1034,6 +1053,9 @@ function toggleFav(id){
 
 /* ========= Tabs (stabil, ohne Abhängigkeiten) ========= */
 function setTab(t){
+  // If preview is open, close it when navigating (e.g., Warenkorb)
+  try{ closePreview(); }catch(_e){}
+
   document.getElementById("tabShop").classList.toggle("active", t==="shop");
   document.getElementById("tabFav").classList.toggle("active", t==="fav");
   document.getElementById("tabCart").classList.toggle("active", t==="cart");
