@@ -3387,6 +3387,9 @@ function renderAdminPromo(){
 
     const countdownText = hasCountdown ? formatCountdown(Math.max(0, leftMs)) : "";
 
+    const status = (typeof promoStatusFromLeftMs === "function") ? promoStatusFromLeftMs(leftMs) : null;
+    const statusHtml = status ? `<div class="status tone-${status.tone}" data-admin-promo-status>${escapeHtml(status.text)}</div>` : ``;
+
     box.innerHTML = `
       <div class="left">
         <div class="title">${escapeHtml((c.icon ? c.icon + " " : "") + (c.title || ""))}</div>
@@ -3399,6 +3402,52 @@ function renderAdminPromo(){
     `;
     box.style.display = "";
   };
+  // Live Admin-Preview: echte Restzeit + Badge/Farbe live updaten
+  try{
+    if(window.__adminPromoPreviewTimer) clearInterval(window.__adminPromoPreviewTimer);
+    window.__adminPromoPreviewTimer = setInterval(()=>{
+      const box = document.getElementById("promoPreviewBox2");
+      if(!box || box.style.display==="none") return;
+
+      // read latest values from form (so edits wirken sofort)
+      readFormIntoCampaign();
+      const i = getSelectedIndex();
+      const c = campaigns[i];
+      if(!c || !c.enabled) return;
+
+      const endMs = c.endAt ? new Date(c.endAt).getTime() : null;
+      const hasCountdown = endMs && !isNaN(endMs);
+      const leftMs = hasCountdown ? (endMs - Date.now()) : null;
+
+      const a = (typeof promoAccentFromLeftMs==="function") ? promoAccentFromLeftMs(leftMs) : {accent:null, urgent:false};
+      const accent = a.accent || (c.color || "#34d399");
+      box.style.borderColor = `${accent}55`;
+      box.style.background = `linear-gradient(90deg, ${accent}22, rgba(20,25,35,.35))`;
+      box.classList.toggle("promo-urgent", !!a.urgent);
+
+      // Countdown Text
+      const countEl = box.querySelector("[data-admin-promo-count]");
+      if(countEl){
+        countEl.textContent = hasCountdown ? formatCountdown(Math.max(0, leftMs)) : "";
+      }
+
+      // Status Badge
+      const st = (typeof promoStatusFromLeftMs==="function") ? promoStatusFromLeftMs(leftMs) : null;
+      const stEl = box.querySelector("[data-admin-promo-status]");
+      if(stEl){
+        if(!st){
+          stEl.textContent = "";
+          stEl.classList.remove("tone-ok","tone-warn","tone-danger");
+        }else{
+          stEl.textContent = st.text;
+          stEl.classList.toggle("tone-ok", st.tone==="ok");
+          stEl.classList.toggle("tone-warn", st.tone==="warn");
+          stEl.classList.toggle("tone-danger", st.tone==="danger");
+        }
+      }
+    }, 250);
+  }catch(e){}
+
 
   // Presets
   const setPreset = (which)=>{
