@@ -652,6 +652,171 @@ const BADGE_OPTIONS = [
   { key: "sale20",  label: "💸 20 % Rabatt" },
   { key: "sale50",  label: "💸 50 % Rabatt" },
 ];
+/* ========= Ressourcen-Bibliothek (pro Ressource, 1 Klick einfügen) =========
+   Speichert Templates in shop_settings.data.resourceLibrary:
+   [{ id, name, color }]
+*/
+function getResourceLibrary(){
+  const s = window.__shopSettings || {};
+  const arr = Array.isArray(s.resourceLibrary) ? s.resourceLibrary : [];
+  // sanitize + unique by id
+  const byId = new Map();
+  arr.forEach(x=>{
+    if(!x) return;
+    const id = String(x.id||"").trim() || ("r_"+Math.random().toString(16).slice(2));
+    const name = String(x.name||"").trim();
+    if(!name) return;
+    const color = String(x.color||"#7dd3fc");
+    byId.set(id, { id, name, color });
+  });
+  return Array.from(byId.values());
+}
+
+async function saveResourceLibrary(list){
+  if(!sb) return { ok:false };
+  const safe = (Array.isArray(list)?list:[]).map(x=>({
+    id: String(x.id||"").trim() || ("r_"+Math.random().toString(16).slice(2)),
+    name: String(x.name||"").trim() || "Ressource",
+    color: String(x.color||"#7dd3fc")
+  }));
+  const next = Object.assign({}, window.__shopSettings || {}, { resourceLibrary: safe });
+  const r = await sb.from("shop_settings").upsert({ id: 1, data: next });
+  if(r.error){
+    console.warn(r.error);
+    showToast("Ressourcen", "Speichern fehlgeschlagen (RLS?)");
+    return { ok:false, error:r.error };
+  }
+  window.__shopSettings = next;
+  showToast("Ressourcen", "Bibliothek gespeichert ✅", { duration: 1200 });
+  return { ok:true };
+}
+
+function renderResourceLibraryUI(st){
+  const host = document.getElementById("resourceLibraryBox");
+  if(!host) return;
+
+  const lib = getResourceLibrary();
+  host.innerHTML = `
+    <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap">
+      <div>
+        <b>Ressourcen-Bibliothek</b>
+        <div class="muted" style="font-size:12px; margin-top:4px">1 Klick einfügen – danach nur Menge bestimmen</div>
+      </div>
+      <div class="muted" style="font-size:12px">Speichert in shop_settings</div>
+    </div>
+
+    <div style="height:10px"></div>
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <select id="resLibSelect" style="flex:1; min-width:220px">
+        ${lib.length ? lib.map(x=>`<option value="${escapeHtml(x.id)}">${escapeHtml(x.name)}</option>`).join("") : `<option value="">(noch keine Ressourcen)</option>`}
+      </select>
+      <button id="btnResLibInsert" class="primary" ${lib.length? "": "disabled"}>➕ Einfügen…</button>
+      <button id="btnResLibInsertFromAmt" ${lib.length? "": "disabled"}>⚡ Einfügen (Anzahl-Feld)</button>
+    </div>
+
+    <div style="height:12px"></div>
+
+    <div style="border-top:1px solid var(--border); padding-top:12px">
+      <b>Neue Ressource speichern</b>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+        <input id="resLibName" placeholder="Name (z.B. Deadcoins)" style="flex:1; min-width:200px" />
+        <input id="resLibColor" type="color" value="#7dd3fc" style="width:70px; padding:6px" />
+        <button id="btnResLibSave" class="success">💾 Speichern</button>
+        <button id="btnResLibDelete" class="danger" ${lib.length? "": "disabled"}>🗑 Löschen</button>
+      </div>
+      <div class="muted" style="font-size:12px; margin-top:8px">
+        Tipp: Danach im Produkt einfach auswählen → „Einfügen…“ → Menge eingeben.
+      </div>
+    </div>
+  `;
+
+  const sel = host.querySelector("#resLibSelect");
+  const btnIns = host.querySelector("#btnResLibInsert");
+  const btnInsAmt = host.querySelector("#btnResLibInsertFromAmt");
+  const nameInp = host.querySelector("#resLibName");
+  const colInp = host.querySelector("#resLibColor");
+  const btnSave = host.querySelector("#btnResLibSave");
+  const btnDel = host.querySelector("#btnResLibDelete");
+
+  function getSelected(){
+    const id = sel?.value;
+    return getResourceLibrary().find(x=>x.id===id) || null;
+  }
+
+  function upsertResourceToProduct(template, amount){
+    if(!template) return;
+    const amt = Math.round(Number(amount||0));
+    if(!Number.isFinite(amt) || amt<=0){
+      alert("Bitte eine positive Menge eingeben.");
+      return;
+    }
+
+    const cur = Array.isArray(st.resources) ? st.resources.slice() : [];
+    const idx = cur.findIndex(r=>String(r.name||"").trim().toLowerCase() === String(template.name||"").trim().toLowerCase());
+    const entry = { name: template.name, amount: amt, color: template.color || "#7dd3fc" };
+    if(idx >= 0) cur[idx] = entry; else cur.push(entry);
+    st.setResources(cur);
+  }
+
+  if(btnIns){
+    btnIns.onclick = ()=>{
+      const t = getSelected();
+      if(!t) return;
+      const v = prompt(`Menge für "${t.name}" eingeben:`, "1000");
+      if(v == null) return;
+      const n = parseAmountDE(v);
+      upsertResourceToProduct(t, n);
+    };
+  }
+
+  if(btnInsAmt){
+    btnInsAmt.onclick = ()=>{
+      const t = getSelected();
+      if(!t) return;
+      const amtField = document.getElementById("rAmt");
+      const n = parseAmountDE(amtField?.value || "");
+      upsertResourceToProduct(t, n);
+      // nach Einfügen den Name/Color in den Inputs spiegeln (optional)
+      const nameField = document.getElementById("rName");
+      const colorField = document.getElementById("rColor");
+      if(nameField) nameField.value = "";
+      if(amtField) amtField.value = "";
+      if(colorField && t.color) colorField.value = t.color;
+    };
+  }
+
+  if(btnSave){
+    btnSave.onclick = async ()=>{
+      const nm = (nameInp?.value || "").trim();
+      if(!nm){ alert("Bitte einen Namen eingeben."); return; }
+      const color = (colInp?.value || "#7dd3fc");
+      const list = getResourceLibrary();
+      // wenn Name schon existiert -> update
+      const existing = list.find(x=>x.name.toLowerCase()===nm.toLowerCase());
+      if(existing){
+        existing.color = color;
+      }else{
+        list.push({ id: "r_"+Math.random().toString(16).slice(2), name: nm, color });
+      }
+      await saveResourceLibrary(list);
+      if(nameInp) nameInp.value = "";
+      renderResourceLibraryUI(st);
+    };
+  }
+
+  if(btnDel){
+    btnDel.onclick = async ()=>{
+      const t = getSelected();
+      if(!t) return;
+      const ok = confirm(`Ressource "${t.name}" aus der Bibliothek löschen?`);
+      if(!ok) return;
+      const list = getResourceLibrary().filter(x=>x.id!==t.id);
+      await saveResourceLibrary(list);
+      renderResourceLibraryUI(st);
+    };
+  }
+}
 function normalizeBadges(b){
   const arr = Array.isArray(b) ? b : (b ? [b] : []);
   const allowed = new Set(BADGE_OPTIONS.map(x=>x.key));
@@ -1552,6 +1717,9 @@ function renderAdminProducts(){
 
           <div style="height:10px"></div>
           <div id="resList" class="chips"></div>
+          <div style="height:12px"></div>
+          <div id="resourceLibraryBox" style="border:1px dashed rgba(255,255,255,.14); border-radius:14px; padding:12px; background: rgba(255,255,255,.015)"></div>
+
         </div>
 
 <div style="height:12px"></div>
@@ -1729,6 +1897,7 @@ renderBadgeChecks(st);
   // initial chips
   renderResChips(st);
   renderVarChips(st);
+  renderResourceLibraryUI(st);
 }
 
 function fillEditorFromProduct(st, productId){
@@ -1743,6 +1912,7 @@ function fillEditorFromProduct(st, productId){
     updateImagePreview("");
     st.setResources([]);
     st.setVariants([{ name:"Standard", multiplier: 1 }]);
+    try{ renderResourceLibraryUI(st); }catch(_){ }
     return;
   }
 
@@ -1757,6 +1927,7 @@ function fillEditorFromProduct(st, productId){
   st.setVariants(Array.isArray(p.variants) && p.variants.length ? p.variants : [{ name:"Standard", multiplier: 1 }]);
   st.badges = normalizeBadges(p.badges);
   renderBadgeChecks(st);
+  try{ renderResourceLibraryUI(st); }catch(_){ }
 }
 
 function updateImagePreview(url){
