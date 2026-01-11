@@ -402,6 +402,12 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     margin-top: -6px;
     margin-bottom: 10px;
   }
+
+  /* Make section headers span the full grid width in the product grid */
+  #productList .bundleSectionTitle,
+  #productList .bundleHint{
+    grid-column: 1 / -1;
+  }
   .badge.b-bundle{
     border-color: rgba(167,139,250,.45);
     background: rgba(167,139,250,.12);
