@@ -197,57 +197,6 @@
 .badge.b-sale20{ border-color: rgba(52,211,153,.55); }
 .badge.b-sale50{ border-color: rgba(251,113,133,.55); box-shadow: 0 0 0 3px rgba(251,113,133,.08) inset; }
 .badgeRow{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
-
-/* === Bundles (Anzeige im Shop) === */
-.bundleBadge{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  font-size:12px;
-  font-weight:900;
-  border:1px solid var(--border);
-  background: rgba(17,24,38,72);
-  backdrop-filter: blur(6px);
-  padding:6px 10px;
-  border-radius:999px;
-  line-height:1;
-  white-space:nowrap;
-}
-.bundleBadge{ border-color: rgba(167,139,250,60); } /* lila */
-.bundleSection{
-  margin-top:10px;
-  border:1px solid var(--border);
-  background: rgba(255,255,255,02);
-  border-radius:12px;
-  padding:10px;
-}
-.bundleSectionTitle{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  font-weight:900;
-  font-size:13px;
-  color: var(--text);
-}
-.bundleList{
-  margin:8px 0 0 0;
-  padding-left:18px;
-  color: var(--text);
-  font-size:13px;
-}
-.bundleList li{ margin:3px 0; }
-.bundleMetaRow{
-  display:flex;
-  gap:6px;
-  flex-wrap:wrap;
-  margin-top:8px;
-}
-.bundleMini{
-  font-size:12px;
-  color: var(--muted);
-}
-
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
 
 /* === UX Upgrades: Cart Sticky Summary + Animations + Favorites === */
@@ -438,6 +387,65 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
     font-size: 12px;
     color: rgba(235,245,255,.8);
     white-space:nowrap;
+  }
+
+
+  /* ===== Bundles im Shop ===== */
+  .bundleSectionTitle{
+    margin: 14px 0 10px;
+    font-weight: 800;
+    letter-spacing: .2px;
+  }
+  .bundleHint{
+    font-size: 12px;
+    opacity: .75;
+    margin-top: -6px;
+    margin-bottom: 10px;
+  }
+  .badge.b-bundle{
+    border-color: rgba(167,139,250,.45);
+    background: rgba(167,139,250,.12);
+  }
+  .bundleListBox{
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.03);
+    border-radius: 14px;
+    padding: 10px 12px;
+    margin-top: 10px;
+  }
+  .bundleUl{
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+    display: grid;
+    gap: 6px;
+  }
+  .bundleUl li{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size: 13px;
+  }
+  .bundleUl .dot{
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.10);
+    flex: 0 0 auto;
+  }
+  .descBox{
+    white-space: pre-wrap;
+    line-height: 1.35;
+    font-size: 13px;
+    margin-top: 10px;
+    border: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.02);
+    border-radius: 14px;
+    padding: 10px 12px;
   }
 
 </style>
@@ -751,6 +759,23 @@ function openProductPreview(productId){
   const variants = (typeof getVariants==="function") ? getVariants(p) : [{name:"Standard", multiplier:1}];
   const badgeOverlay = (typeof badgesToHtml==="function") ? badgesToHtml(p.badges,{where:"overlay"}) : "";
   const badgeRow = (typeof badgesToHtml==="function") ? badgesToHtml(p.badges,{where:"row"}) : "";
+  const isB = isBundleProduct(p);
+  const bIds = Array.isArray(p.bundle_items) ? p.bundle_items.map(String) : [];
+  const bItems = bIds.map(id=>products.find(x=>String(x.id)===String(id))).filter(Boolean);
+  const bundleBox = isB ? `
+    <div class="bundleListBox">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:10px">
+        <b>🧩 Bundle enthält ${bIds.length} Produkte</b>
+        <span class="badge b-bundle">Bundle</span>
+      </div>
+      <ul class="bundleUl">
+        ${bItems.map(x=>`<li><span class="dot">📦</span><span>${escapeHtml(x.name||"")}</span></li>`).join("") || `<li class="muted">Produkte nicht geladen</li>`}
+      </ul>
+    </div>
+  ` : "";
+
+  const descHtml = renderDescriptionHtml(p.description);
+
   body.innerHTML = `
     <div class="prod" style="max-width:520px; margin:0 auto">
       ${img ? `
@@ -766,16 +791,14 @@ function openProductPreview(productId){
         </div>
       </div>
       ${badgeRow || ``}
-      ${bundleCountBadgeHtml(p) || ``}
-      ${bundleSectionHtml(p) || ``}
+      ${bundleBox}
+      ${descHtml}
       ${variants.length>1 ? `
         <div style="height:8px"></div>
         <select style="width:100%">
           ${variants.map(v=>`<option>${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`).join("")}
         </select>
       ` : ``}
-      ${bundleSectionHtml(p) || ``}
-
       <div class="chips">${fmtRes(p.resources || [])}</div>
       <div style="height:10px"></div>
       <button class="primary" style="width:100%" disabled>In den Warenkorb</button>
@@ -788,53 +811,36 @@ async function duplicateProduct(productId){
   const p = products.find(x=>String(x.id)===String(productId));
   if(!p) return;
   const payload = {
-    name: String((p.name||"Produkt") + " (Kopie)"),
-    category_id: p.category_id || null,
-    image_url: p.image_url || null,
-    resources: Array.isArray(p.resources) ? p.resources : [],
-    variants: Array.isArray(p.variants) ? p.variants : [],
-    badges: Array.isArray(p.badges) ? p.badges : []
-  };
-  const r = await sb.from("products").insert(payload);
-  if(r.error){
-    console.error(r.error);
-    alert("Duplizieren fehlgeschlagen (RLS?)");
-    return;
-  }
-  await loadPublic();
-  renderAdminProducts();
-  showToast?.("Produkt dupliziert", payload.name, { duration: 1600 });
-}
-async function createBundleFromSelection(selectedIds, bundleMeta){
-  const sel = selectedIds.map(id=>products.find(p=>String(p.id)===String(id))).filter(Boolean);
-  if(!sel.length){ alert("Bitte Produkte auswählen."); return; }
-
-  // Ressourcen summieren
-  const totals = new Map(); // nameLower -> {name, amount, color}
-  sel.forEach(p=>{
-    (p.resources||[]).forEach(r=>{
-      const name = String(r.name||"").trim();
-      if(!name) return;
-      const key = name.toLowerCase();
-      const amt = Math.round(Number(r.amount)||0);
-      if(!Number.isFinite(amt) || amt<=0) return;
-      const prev = totals.get(key) || { name, amount: 0, color: r.color || "#7dd3fc" };
-      prev.amount += amt;
-      if(r.color) prev.color = r.color;
-      totals.set(key, prev);
-    });
-  });
-
-  const resources = Array.from(totals.values()).map(x=>({ name:x.name, amount:x.amount, color:x.color }));
-
-  const payload = {
     name: String(bundleMeta?.name||"Bundle").trim() || "Bundle",
     category_id: bundleMeta?.category_id || null,
     image_url: bundleMeta?.image_url || null,
     resources,
     variants: [], // Standard
-    badges: []
-  };
+    badges: [],
+
+    // Bundle-Features
+    is_bundle: true,
+    bundle_items: Array.isArray(selectedIds) ? selectedIds.map(String) : [],
+
+    // Beschreibung: optional + Auto-Liste
+    description: (()=>{
+      const base = String(bundleMeta?.description || "").trim();
+      const auto = !!bundleMeta?.auto_list;
+      if(!auto){
+        return base || null;
+      }
+      const lines = sel.map(p=>`• ${String(p.name||"").trim()}`).filter(Boolean).join("
+");
+      const head = "🧩 Dieses Bundle enthält:
+
+";
+      const autoText = head + lines;
+      return (base ? (base + "
+
+" + autoText) : autoText) || null;
+    })()
+  }
+};
 
   const r = await sb.from("products").insert(payload);
   if(r.error){
@@ -876,50 +882,6 @@ function badgesToHtml(badges, opts={}){
     ? `<div class="badgeStack">${items}</div>`
     : `<div class="badgeRow">${items}</div>`;
 }
-
-/* ========= Bundles (Builder + Shop Anzeige) ========= */
-function normalizeBundleItems(items){
-  // akzeptiert ids oder {id,name} Objekte
-  const arr = Array.isArray(items) ? items : [];
-  return arr.map(x=>{
-    if(x && typeof x === "object"){
-      return { id: String(x.id||"").trim(), name: String(x.name||"").trim() };
-    }
-    return { id: String(x||"").trim(), name: "" };
-  }).filter(x=>x.id);
-}
-function bundleCountBadgeHtml(p){
-  const items = normalizeBundleItems(p?.bundle_items);
-  if(!items.length) return "";
-  const n = items.length;
-  const label = `🧩 Bundle enthält ${n} ${n===1 ? "Produkt" : "Produkte"}`;
-  return `<div class="bundleMetaRow"><span class="bundleBadge">${escapeHtml(label)}</span></div>`;
-}
-function bundleSectionHtml(p){
-  const items = normalizeBundleItems(p?.bundle_items);
-  const desc = String(p?.description||"").trim();
-  if(!items.length && !desc) return "";
-  const listHtml = items.length ? `<ul class="bundleList">${items.map(it=>`<li>${escapeHtml(it.name || it.id)}</li>`).join("")}</ul>` : "";
-  const descHtml = desc ? `<div class="bundleMini" style="margin-top:6px; white-space:pre-wrap">${escapeHtml(desc)}</div>` : "";
-  const title = items.length ? "🛒 Bundle-Inhalt" : "🛒 Beschreibung";
-  return `
-    <div class="bundleSection">
-      <div class="bundleSectionTitle">
-        <span>${title}</span>
-        ${items.length ? `<span class="bundleMini">${items.length}×</span>` : ``}
-      </div>
-      ${listHtml}
-      ${descHtml}
-    </div>
-  `;
-}
-function buildBundleAutoDescription(selectedProducts){
-  const names = (selectedProducts||[]).map(p=>String(p?.name||"").trim()).filter(Boolean);
-  if(names.length===0) return "";
-  // simple, shopfreundlich
-  return "Enthält:\n" + names.map(n=>`• ${n}`).join("\n");
-}
-
 let cart = JSON.parse(localStorage.getItem("bf_cart") || "[]");
 let favs = new Set(JSON.parse(localStorage.getItem("bf_favs") || "[]"));
 // Migration: alte Cart-Einträge ohne Varianten/Key
@@ -1024,19 +986,29 @@ function renderProducts(){
   else if(filter!=="all") shown = shown.filter(p=>p.category_id===filter);
   if(q) shown = shown.filter(p=>String(p.name||"").toLowerCase().includes(q));
 
+
+  // Bundles separat darstellen (oben), normale Produkte darunter
+  const bundles = shown.filter(p=>isBundleProduct(p));
+  const normals = shown.filter(p=>!isBundleProduct(p));
+
   if(shown.length===0){
     list.innerHTML = `<div class="muted">${window.__shopMode==="fav" ? "Noch keine Favoriten. Tippe ☆ um Produkte zu merken." : "Keine Produkte gefunden."}</div>`;
     return;
   }
 
-  for(const p of shown){
+    const appendCard = (p)=>{
     const div = document.createElement("div");
     div.className = "prod";
+    div.onclick = (e)=>{
+      if(e.target.closest("button, select, input, a")) return;
+      try{ openProductPreview(p.id); }catch(_e){}
+    };
     const img = (p.image_url && String(p.image_url).trim()) ? String(p.image_url).trim() : "";
     const variants = getVariants(p);
     const favActive = isFav(p.id);
     const badgeOverlay = badgesToHtml(p.badges, { where: 'overlay' });
     const badgeRow = badgesToHtml(p.badges, { where: 'row' });
+    const bundleRow = isBundleProduct(p) ? `<div class="badgeRow"><span class="badge b-bundle">🧩 Bundle enthält ${bundleCount(p)} Produkte</span></div>` : "";
     const variantOptions = variants.map((v,idx)=>
       `<option value="${idx}" data-m="${v.multiplier}" data-n="${escapeHtml(v.name)}">${escapeHtml(v.name)}${v.multiplier!==1 ? ` (×${v.multiplier})` : ""}</option>`
     ).join("");
@@ -1049,6 +1021,8 @@ function renderProducts(){
           <img src="${img}" alt="" onerror="this.closest('.previewBox').style.display='none'">
         </div>
       ` : ``}
+
+      ${img ? (bundleRow || ``) : ``}
 
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
@@ -1063,9 +1037,7 @@ function renderProducts(){
       </div>
 
       ${!img ? (badgeRow || ``) : ``}
-
-      
-      ${bundleCountBadgeHtml(p) || ``}
+      ${bundleRow || ``}
 
       ${variants.length>1 ? `
         <div style="height:8px"></div>
@@ -1080,6 +1052,33 @@ function renderProducts(){
     `;
 
     list.appendChild(div);
+  };
+
+
+  const hasBundles = bundles.length > 0;
+
+  if(hasBundles){
+    const h = document.createElement("div");
+    h.className = "bundleSectionTitle";
+    h.textContent = "🧩 Bundles";
+    list.appendChild(h);
+
+    const hint = document.createElement("div");
+    hint.className = "bundleHint";
+    hint.textContent = "Bundles enthalten mehrere Produkte – Ressourcen sind summiert.";
+    list.appendChild(hint);
+
+    for(const p of bundles) appendCard(p);
+  }
+
+  const mainArr = hasBundles ? normals : shown;
+  if(hasBundles){
+    const h2 = document.createElement("div");
+    h2.className = "bundleSectionTitle";
+    h2.textContent = (window.__shopMode==="fav") ? "⭐ Favoriten" : "Produkte";
+    list.appendChild(h2);
+  }
+  for(const p of mainArr) appendCard(p);
   }
   list.querySelectorAll("[data-add]").forEach(b=>{
     b.onclick = ()=>{
@@ -1818,6 +1817,23 @@ function escapeHtml(s){
   return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 }
 
+
+
+function isBundleProduct(p){
+  return !!(p && (p.is_bundle === true || (Array.isArray(p.bundle_items) && p.bundle_items.length)));
+}
+function bundleCount(p){
+  if(!p) return 0;
+  if(Array.isArray(p.bundle_items)) return p.bundle_items.length;
+  return 0;
+}
+function renderDescriptionHtml(desc){
+  const d = String(desc || "").trim();
+  if(!d) return "";
+  // pre-wrap in CSS, so only escape
+  return `<div class="descBox">${escapeHtml(d)}</div>`;
+}
+
 // ===== Zahlen-Input: erlaubt 5000, 5.000, 5,000, 5 000 =====
 function parseAmountDE(input){
   if(input == null) return null;
@@ -2129,12 +2145,11 @@ function renderAdminProducts(){
           <input id="bundleName" placeholder="Bundle Name (z.B. Weekend Bundle)" />
           <select id="bundleCat">${catOptions}</select>
           <input id="bundleImg" placeholder="Bundle Bild URL (optional)" style="grid-column: 1 / -1" />
-          <textarea id="bundleDesc" placeholder="Bundle Beschreibung (optional) – erscheint im Shop" style="grid-column: 1 / -1; min-height:84px"></textarea>
-          <label style="grid-column: 1 / -1; display:flex; gap:10px; align-items:center; font-size:12px" class="muted">
-            <input type="checkbox" id="bundleAutoDesc" checked>
-            Produkte automatisch als Liste in die Beschreibung übernehmen (empfohlen)
+          <textarea id="bundleDesc" placeholder="Bundle Beschreibung (optional) – wird im Shop angezeigt" style="grid-column: 1 / -1; min-height: 84px"></textarea>
+          <label style="grid-column: 1 / -1; display:flex; gap:10px; align-items:center; margin-top:4px">
+            <input type="checkbox" id="bundleAutoDescription" checked />
+            <span>Produkte im Bundle automatisch als Liste in die Beschreibung übernehmen</span>
           </label>
-
         </div>
 
         <div style="height:10px"></div>
@@ -2179,7 +2194,7 @@ function renderAdminProducts(){
     const catEl = document.getElementById("bundleCat");
     const imgEl = document.getElementById("bundleImg");
     const descEl = document.getElementById("bundleDesc");
-    const autoDescEl = document.getElementById("bundleAutoDesc");
+    const autoEl = document.getElementById("bundleAutoDescription");
     const prevWrap = document.getElementById("bundleImgPreviewWrap");
     const prevImg = document.getElementById("bundleImgPreview");
 
@@ -2226,8 +2241,8 @@ function renderAdminProducts(){
         name: String(nameEl.value||"").trim() || "Bundle",
         category_id: (catEl.value==="none") ? null : catEl.value,
         image_url: String(imgEl?.value||"").trim() || null,
-        description: String(descEl?.value||"").trim() || "",
-        autoDesc: !!(autoDescEl?.checked)
+        description: String(descEl?.value || "").trim() || "",
+        auto_list: !!(autoEl && autoEl.checked)
       };
       if(ids.length===0){ alert("Bitte mindestens 1 Produkt auswählen."); return; }
       await createBundleFromSelection(ids, meta);
