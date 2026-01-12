@@ -1787,6 +1787,9 @@ const c = data.colors || {};
     if(c.primary) root.setProperty("--primary", c.primary);
     if(c.success) root.setProperty("--success", c.success);
     if(c.danger) root.setProperty("--danger", c.danger);
+
+    // ✅ Background Image aus Settings anwenden (damit es nach Reload bleibt)
+    try{ applyBackgroundFromSettings(); }catch(_){ }
   }catch(e){
     console.warn("settings load failed", e);
     window.__shopSettings = {};
