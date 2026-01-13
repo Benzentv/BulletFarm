@@ -1113,6 +1113,23 @@ async function createBundleFromSelection(selectedIds, bundleMeta){
 let categories = [];
 let products = [];
 
+/* ========= Category Options (für Admin-Selects) ========= */
+var catOptions = "";
+function buildCatOptionsHtml(selectedId){
+  const out = [];
+  out.push(`<option value="none">Keine Kategorie</option>`);
+  (categories||[]).forEach(c=>{
+    const id = String(c.id);
+    const sel = (selectedId!==undefined && selectedId!==null && String(selectedId)===id) ? "selected" : "";
+    out.push(`<option value="${escapeHtml(id)}" ${sel}>${escapeHtml(c.name||id)}</option>`);
+  });
+  return out.join("");
+}
+function refreshCatOptions(){
+  catOptions = buildCatOptionsHtml();
+}
+
+
 
 /* ========= Badges (Admin-zuweisbar) ========= */
 const BADGE_OPTIONS = [
@@ -2021,6 +2038,7 @@ const c = data.colors || {};
 
   const catRes = await sb.from("categories").select("*").order("created_at", {ascending:true});
   categories = catRes.data || [];
+  try{ refreshCatOptions(); }catch(_e){}
 
   const prodRes = await sb.from("products").select("*").order("created_at", {ascending:false});
   products = prodRes.data || [];
@@ -2265,6 +2283,12 @@ document.getElementById("btnLogout").onclick = async ()=>{
 };
 
 /* ========= Admin: Kategorien (CRUD) ========= */
+function renderAdminProducts(){
+  // In dieser Version ist die Produktverwaltung in renderAdminCategories enthalten.
+  // Alias, damit der Produkte-Tab ohne Fehler funktioniert.
+  return renderAdminCategories();
+}
+
 function renderAdminCategories(){
   const el = document.getElementById("panelCategories");
   el.innerHTML = `
