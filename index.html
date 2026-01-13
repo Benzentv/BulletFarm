@@ -2471,7 +2471,7 @@ function setupEditor(st){
   };
 
 // Varianten hinzufügen
-document.getElementById("btnAddVar").onclick = ()=>{
+(document.getElementById("btnAddVar")||{}).onclick = ()=>{
   const name = (document.getElementById("vName").value||"").trim() || "Variante";
   const mult = Number(document.getElementById("vMult").value);
   if(!Number.isFinite(mult) || mult<=0){
@@ -2495,7 +2495,7 @@ if(!Array.isArray(st.badges)) st.badges = [];
 renderBadgeChecks(st);
 
   // Speichern/Hinzufügen
-  document.getElementById("btnSaveProd").onclick = async ()=>{
+  (document.getElementById("btnSaveProd")||{}).onclick = async ()=>{
     const name = (document.getElementById("pName").value||"").trim();
     const cat = document.getElementById("pCat").value;
     const image_url = (document.getElementById("pImg").value||"").trim() || null;
@@ -2527,7 +2527,7 @@ renderBadgeChecks(st);
   };
 
   // Löschen
-  document.getElementById("btnDeleteProd").onclick = async ()=>{
+  (document.getElementById("btnDeleteProd")||{}).onclick = async ()=>{
     if(!editProductId) return;
     const ok = confirm("Produkt wirklich löschen?");
     if(!ok) return;
