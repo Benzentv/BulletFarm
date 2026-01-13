@@ -3412,8 +3412,7 @@ async function createTestOrderInternal(sendNotify){
       items: chosen
     };
 
-    const ins = await sb
-  if(checkoutUrl){
+    if(checkoutUrl){
     try{
       const res = await fetch(checkoutUrl, {
         method: "POST",
@@ -3438,7 +3437,7 @@ async function createTestOrderInternal(sendNotify){
     }
   }
 
-.from("orders").insert(payload).select("id").maybeSingle();
+  const ins = await sb.from("orders").insert(payload).select("id").maybeSingle();
     if(ins.error){ console.error(ins.error); return { ok:false }; }
 
     if(sendNotify){
