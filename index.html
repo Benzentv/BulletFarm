@@ -801,24 +801,24 @@ async function saveShopSettingsBatch(patchObj, toastTitle){
     const edgeUrl = window.__shopSettings?.admin?.edgeSettingsUrl;
     if(edgeUrl && String(edgeUrl).trim()){
       const res = await fetch(String(edgeUrl).trim(), {
-        method: \"POST\",
+        method: "POST",
         headers: {
-          \"Content-Type\": \"application/json\",
-          \"Authorization\": \"Bearer \" + SUPABASE_ANON_KEY
+          "Content-Type": "application/json",
+          "Authorization": "Bearer " + SUPABASE_ANON_KEY
         },
         body: JSON.stringify({ patch: patchObj || {}, label: label || null })
       });
       const j = await res.json().catch(()=>({}));
       if(!res.ok || j?.error){
-        console.warn(\"edge settings save failed\", j);
-        showToast?.(\"Einstellungen\", \"Speichern fehlgeschlagen (Edge)\", { duration: 1800 });
+        console.warn("edge settings save failed", j);
+        showToast?.("Einstellungen", "Speichern fehlgeschlagen (Edge)", { duration: 1800 });
         return { ok:false, edge:true, error: j?.error || res.status };
       }
-      showToast?.(\"Einstellungen\", \"Gespeichert\", { duration: 1200 });
+      showToast?.("Einstellungen", "Gespeichert", { duration: 1200 });
       return { ok:true, edge:true, data:j };
     }
   }catch(e){
-    console.warn(\"edge settings save exception\", e);
+    console.warn("edge settings save exception", e);
   }
   return await saveShopSettingsPatch(patchObj, toastTitle);
 }
@@ -3333,7 +3333,7 @@ function applyBackgroundFromSettings(){
     // Allow only http(s)/data/blob
     const ok = /^(https?:\/\/|data:|blob:)/i.test(url);
     if(ok){
-      root.setProperty("--bg-img-url", `url("${url.replace(/"/g, '\"')}")`);
+      root.setProperty("--bg-img-url", `url("${url.replace(/"/g, '"')}")`);
       root.setProperty("--bg-img-opacity", String(bg.opacity ?? 0.18));
       root.setProperty("--bg-img-blur", `${parseInt(bg.blur ?? 0,10) || 0}px`);
       return;
