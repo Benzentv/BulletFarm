@@ -717,7 +717,7 @@ function showToast(title, msg, opts={}){
 function addToCartUX(btnEl, productId, variantName, variantMultiplier){
   // Bestand prüfen
   try{
-    const stock = getStock(productId);
+    const stock = getEffectiveStock(productId);
     if(stock !== null){
       const inCart = qtyInCartForProduct(productId);
       if(inCart >= stock){
@@ -796,6 +796,30 @@ async function saveShopSettingsPatch(patchObj, toastTitle="Settings"){
 
 // Kompatibilität: manche Buttons nutzen "Batch"
 async function saveShopSettingsBatch(patchObj, toastTitle){
+  // === EDGE Settings Save (optional) ===
+  try{
+    const edgeUrl = window.__shopSettings?.admin?.edgeSettingsUrl;
+    if(edgeUrl && String(edgeUrl).trim()){
+      const res = await fetch(String(edgeUrl).trim(), {
+        method: \"POST\",
+        headers: {
+          \"Content-Type\": \"application/json\",
+          \"Authorization\": \"Bearer \" + SUPABASE_ANON_KEY
+        },
+        body: JSON.stringify({ patch: patchObj || {}, label: label || null })
+      });
+      const j = await res.json().catch(()=>({}));
+      if(!res.ok || j?.error){
+        console.warn(\"edge settings save failed\", j);
+        showToast?.(\"Einstellungen\", \"Speichern fehlgeschlagen (Edge)\", { duration: 1800 });
+        return { ok:false, edge:true, error: j?.error || res.status };
+      }
+      showToast?.(\"Einstellungen\", \"Gespeichert\", { duration: 1200 });
+      return { ok:true, edge:true, data:j };
+    }
+  }catch(e){
+    console.warn(\"edge settings save exception\", e);
+  }
   return await saveShopSettingsPatch(patchObj, toastTitle);
 }
 
@@ -1111,6 +1135,103 @@ function getStock(productId){
   if(!Number.isFinite(n)) return null;
   return Math.max(0, Math.floor(n));
 }
+
+function isBundleProduct(p){
+  return !!(p && (p.is_bundle || (Array.isArray(p.bundle_items) && p.bundle_items.length>0)));
+}
+
+/**
+ * Effective stock for a product id:
+ * - normal product: its own stock (null = unlimited)
+ * - bundle: min(stock(child)) across bundle_items (ignores unlimited children)
+ *   if all children unlimited => unlimited (null)
+ */
+function getEffectiveStock(productId){
+  const p = (products||[]).find(x=>String(x.id)===String(productId));
+  if(!p) return getStock(productId);
+
+  // If product has explicit stock set, respect it as an extra cap
+  const own = getStock(productId);
+
+  if(!isBundleProduct(p)){
+    return own;
+  }
+
+  const ids = Array.isArray(p.bundle_items) ? p.bundle_items.map(String) : [];
+  if(ids.length===0) return own;
+
+  let minCap = null; // null => unlimited so far
+  for(const cid of ids){
+    const cStock = getStock(cid);
+    if(cStock === null) continue; // unlimited child doesn't cap
+    minCap = (minCap === null) ? cStock : Math.min(minCap, cStock);
+  }
+
+  // If bundle has its own stock too, cap by it
+  if(own !== null){
+    minCap = (minCap === null) ? own : Math.min(minCap, own);
+  }
+  return minCap; // may be null
+}
+
+/** Expand cart into required counts per underlying product (bundles expand to their items). */
+function cartRequiredCounts(){
+  const req = {};
+  for(const ci of (cart||[])){
+    const p = (products||[]).find(x=>String(x.id)===String(ci.productId));
+    const qty = Math.max(0, Number(ci.qty)||0);
+    if(!p || qty<=0) continue;
+
+    if(isBundleProduct(p)){
+      const ids = Array.isArray(p.bundle_items) ? p.bundle_items.map(String) : [];
+      for(const cid of ids){
+        req[cid] = (req[cid]||0) + qty;
+      }
+    }else{
+      const id = String(ci.productId);
+      req[id] = (req[id]||0) + qty;
+    }
+  }
+  return req;
+}
+
+/** Remaining stock for a product card (shows bundle-based remaining too). */
+function getRemainingForDisplay(productId){
+  const cap = getEffectiveStock(productId);
+  if(cap === null) return null; // unlimited
+
+  const p = (products||[]).find(x=>String(x.id)===String(productId));
+  if(!p) return Math.max(0, cap - qtyInCartForProduct(productId));
+
+  // For bundles, remaining depends on child stock minus what's already reserved in cart (bundles + singles)
+  if(isBundleProduct(p)){
+    const req = cartRequiredCounts(); // underlying counts currently in cart
+    const ids = Array.isArray(p.bundle_items) ? p.bundle_items.map(String) : [];
+    let minBundles = null;
+
+    for(const cid of ids){
+      const childCap = getStock(cid);
+      if(childCap === null) continue; // unlimited child doesn't cap
+      const used = Number(req[String(cid)]||0);
+      const left = Math.max(0, childCap - used);
+      minBundles = (minBundles === null) ? left : Math.min(minBundles, left);
+    }
+
+    // cap by bundle own stock if set
+    const own = getStock(productId);
+    if(own !== null){
+      const usedBundle = qtyInCartForProduct(productId);
+      const leftOwn = Math.max(0, own - usedBundle);
+      minBundles = (minBundles === null) ? leftOwn : Math.min(minBundles, leftOwn);
+    }
+
+    return (minBundles === null) ? null : minBundles;
+  }
+
+  // Normal product remaining = stock - inCart
+  const used = qtyInCartForProduct(productId);
+  return Math.max(0, cap - used);
+}
 function qtyInCartForProduct(productId){
   return cart
     .filter(it=>String(it.productId)===String(productId))
@@ -1296,13 +1417,13 @@ function renderProducts(){
 
       <div class="chips">${fmtRes(p.resources || [])}</div>
       ${(() => {
-        const st = getStock(p.id);
+        const st = getRemainingForDisplay(p.id);
         if(st === null) return ``;
         if(st <= 0) return `<div class="muted" style="margin-top:8px; font-weight:900; color: var(--danger)">Ausverkauft</div>`;
         return `<div class="muted" style="margin-top:8px; font-weight:800">Bestand: ${st}</div>`;
       })()}
       <div style="height:8px"></div>
-      <button class="primary" data-add="${p.id}" ${(() => { const st=getStock(p.id); return (st!==null && st<=0) ? "disabled" : ""; })()}>In den Warenkorb</button>
+      <button class="primary" data-add="${p.id}" ${(() => { const st=getRemainingForDisplay(p.id); return (st!==null && st<=0) ? "disabled" : ""; })()}>In den Warenkorb</button>
     `;
 
     list.appendChild(div);
@@ -1390,7 +1511,7 @@ function renderProducts(){
 function addToCart(productId, variantName="Standard", variantMultiplier=1){
   // Bestand prüfen (hard)
   try{
-    const stock = getStock(productId);
+    const stock = getEffectiveStock(productId);
     if(stock !== null){
       const inCart = qtyInCartForProduct(productId);
       if(inCart >= stock){
@@ -1885,6 +2006,28 @@ document.getElementById("btnCheckout").onclick = async ()=>{
     return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty, variantName: ci.variantName || "Standard", variantMultiplier: Number(ci.variantMultiplier||1)||1, resources: p?.resources || [] };
   });
 
+  // ===== Bestand prüfen (inkl. Bundle-Auflösung) =====
+  try{
+    const req = cartRequiredCounts(); // underlying products needed
+    const stockMap = getStockMap();
+    const insufficient = [];
+    for(const [pid, need] of Object.entries(req)){
+      const cap = getStock(pid);
+      if(cap === null) continue; // unlimited
+      if(need > cap){
+        const p = (products||[]).find(x=>String(x.id)===String(pid));
+        insufficient.push(`${p?.name||pid}: benötigt ${need}, verfügbar ${cap}`);
+      }
+    }
+    if(insufficient.length){
+      alert("❌ Nicht genug Bestand:\n\n" + insufficient.join("\n"));
+      return;
+    }
+  }catch(e){
+    console.warn("stock check failed", e);
+  }
+
+
   const ins = await sb
     .from("orders")
     .insert({ status:"offen", customer:{name,phone}, items })
@@ -1914,6 +2057,34 @@ document.getElementById("btnCheckout").onclick = async ()=>{
     }
   }catch(e){
     console.warn("Notify failed", e);
+  }
+
+
+  // ===== Bestand nach Checkout reduzieren (Speicherung in shop_settings.stock) =====
+  try{
+    const req = cartRequiredCounts(); // underlying products needed
+    const cur = getStockMap();
+    const next = Object.assign({}, cur);
+
+    for(const [pid, need] of Object.entries(req)){
+      const cap = getStock(pid);
+      if(cap === null) continue; // unlimited
+      const old = Number(cur[String(pid)] ?? cap);
+      // If stored explicitly: use it; else fall back to cap
+      const newVal = Math.max(0, Math.floor(old - Number(need)));
+      next[String(pid)] = newVal;
+    }
+
+    // Save via existing settings save helper
+    const rStock = await saveShopSettingsBatch({ stock: next }, "Bestand");
+    if(rStock?.ok){
+      window.__shopSettings = Object.assign({}, window.__shopSettings||{}, { stock: next });
+      renderProducts();
+    }else{
+      console.warn("stock save failed", rStock);
+    }
+  }catch(e){
+    console.warn("stock decrement failed", e);
   }
 
   cart = [];
@@ -2428,6 +2599,9 @@ function renderAdminProducts(){
 </div>
 
         <div style="height:12px"></div>
+        <div class="muted" style="font-size:12px; margin-bottom:6px"><b>Edge Function (optional)</b> – sicher speichern ohne Supabase-RLS für Anon-Updates.</div>
+        <input id="edgeSettingsUrl" placeholder="Edge Settings URL (optional)" value="${escapeHtml(String((window.__shopSettings?.admin?.edgeSettingsUrl)||""))}" />
+        <div style="height:10px"></div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <button class="success" id="btnSaveProd">${editProductId ? "✅ Speichern" : "✅ Hinzufügen"}</button>
           <button class="danger" id="btnDeleteProd" style="display:${editProductId ? "" : "none"}">🗑 Löschen</button>
@@ -3227,13 +3401,13 @@ function renderAdminBackground(){
   });
 
   document.getElementById("btnBgPreview").onclick = ()=>{
-    window.__shopSettings = Object.assign({}, window.__shopSettings || {}, { bgImage: readForm() });
+    window.__shopSettings = Object.assign({}, window.__shopSettings || {}, { bgImage: readForm(), admin: Object.assign({}, window.__shopSettings?.admin||{}, { edgeSettingsUrl: (document.getElementById('edgeSettingsUrl')?.value||'').trim() }) });
     applyBackgroundFromSettings();
     showToast?.("Background", "Vorschau angewendet", { duration: 1200 });
   };
 
   document.getElementById("btnBgSave").onclick = async ()=>{
-    const patch = { bgImage: readForm() };
+    const patch = { bgImage: readForm(), admin: Object.assign({}, window.__shopSettings?.admin||{}, { edgeSettingsUrl: (document.getElementById('edgeSettingsUrl')?.value||'').trim() }) };
     const r = await saveShopSettingsBatch(patch, "Background");
     if(r?.ok){
       applyBackgroundFromSettings();
@@ -3241,7 +3415,7 @@ function renderAdminBackground(){
   };
 
   document.getElementById("btnBgClear").onclick = async ()=>{
-    const patch = { bgImage: { enabled:false, url:"", opacity:0.18, blur:0 } };
+    const patch = { bgImage: { enabled:false, url:"", opacity:0.18, blur:0 }, admin: Object.assign({}, window.__shopSettings?.admin||{}, { edgeSettingsUrl: (document.getElementById('edgeSettingsUrl')?.value||'').trim() }) };
     const r = await saveShopSettingsBatch(patch, "Background");
     if(r?.ok){
       window.__shopSettings = Object.assign({}, window.__shopSettings || {}, patch);
