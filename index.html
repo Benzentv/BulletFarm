@@ -2435,6 +2435,13 @@ function getEditorState(){
   };
 }
 
+
+function setupResourceLib(){
+  // Optional helper: in manchen Versionen gibt es eine Ressourcen-Bibliothek im Editor.
+  // Falls nicht vorhanden, machen wir nichts (verhindert ReferenceError).
+  return;
+}
+
 function setupEditor(st){
   // Bild Vorschau live
   const imgInput = document.getElementById("pImg");
