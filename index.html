@@ -676,6 +676,15 @@ function showBanner(msg){
 
 /* ========= Toast / Snackbar ========= */
 const toastHost = document.getElementById("toastHost");
+function escapeHtml(str){
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function showToast(title, msg, opts={}){
   const duration = Number(opts.duration ?? 1800) || 1800;
   const actionText = opts.actionText || "";
