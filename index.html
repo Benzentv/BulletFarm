@@ -717,13 +717,10 @@ function showToast(title, msg, opts={}){
 function addToCartUX(btnEl, productId, variantName, variantMultiplier){
   // Bestand prüfen
   try{
-    const stock = getStock(productId);
-    if(stock !== null){
-      const inCart = qtyInCartForProduct(productId);
-      if(inCart >= stock){
-        showToast?.("Bestand", "Nicht genug Bestand verfügbar.", { duration: 1600 });
-        return;
-      }
+    const r = remainingAvailable(productId);
+    if(r !== null && r <= 0){
+      showToast?.("Bestand", "Nicht genug Bestand verfügbar.", { duration: 1600 });
+      return;
     }
   }catch(_e){}
 
@@ -1102,20 +1099,113 @@ function getStockMap(){
   const m = s.stock;
   return (m && typeof m === "object") ? m : {};
 }
-function getStock(productId){
-  const m = getStockMap();
+
+// low-level: stock aus beliebiger Map lesen (null = unbegrenzt)
+function getStockFromMap(stockMap, productId){
+  const m = (stockMap && typeof stockMap === "object") ? stockMap : {};
   const v = m[String(productId)];
   const n = Number(v);
-  // undefined/null/leer => kein Limit (unbegrenzt)
-  if(v === undefined || v === null || v === "") return null;
+  if(v === undefined || v === null || v === "") return null; // unbegrenzt
   if(!Number.isFinite(n)) return null;
   return Math.max(0, Math.floor(n));
 }
+
+// High-level: effektiver Bestand inkl. Bundle-Logik (Bundle = Minimum der enthaltenen Produkte)
+function getEffectiveStock(productId, stockMapOverride){
+  const p = products.find(x=>String(x.id)===String(productId));
+  const stockMap = stockMapOverride || getStockMap();
+
+  // normal
+  if(!p || !isBundleProduct(p)){
+    return getStockFromMap(stockMap, productId);
+  }
+
+  // Bundle: min(stock(child)) ; null (=unbegrenzt) zählt als Infinity
+  const ids = Array.isArray(p.bundle_items) ? p.bundle_items.map(String) : [];
+  if(ids.length===0) return getStockFromMap(stockMap, productId); // fallback
+
+  let hasFinite = false;
+  let min = Infinity;
+
+  for(const cid of ids){
+    const s = getStockFromMap(stockMap, cid);
+    if(s === null) continue; // unbegrenzt -> ignorieren
+    hasFinite = true;
+    if(s < min) min = s;
+  }
+
+  // alle unbegrenzt => Bundle unbegrenzt
+  if(!hasFinite) return null;
+  return Math.max(0, Math.floor(min));
+}
+
+// Backward compatibility: alte Aufrufe
+function getStock(productId){
+  return getEffectiveStock(productId);
+}
+
 function qtyInCartForProduct(productId){
   return cart
     .filter(it=>String(it.productId)===String(productId))
     .reduce((s,it)=>s + (Number(it.qty)||0), 0);
 }
+
+
+// Restbestand (für "Noch X verfügbar" / Buttons)
+function getCartNeedMap(){
+  const need = {}; // base productId -> qty consumed im Warenkorb (Bundles aufgelöst)
+  for(const ci of cart){
+    const p = products.find(x=>String(x.id)===String(ci.productId));
+    const qty = Math.max(0, Math.floor(Number(ci.qty)||0));
+    if(!p || qty<=0) continue;
+
+    if(isBundleProduct(p)){
+      const ids = Array.isArray(p.bundle_items) ? p.bundle_items.map(String) : [];
+      for(const cid of ids){
+        need[cid] = (need[cid] || 0) + qty;
+      }
+    }else{
+      const pid = String(ci.productId);
+      need[pid] = (need[pid] || 0) + qty;
+    }
+  }
+  return need;
+}
+
+// Restbestand (für "Noch X verfügbar" / Buttons)
+// - Produkte: stock(product) - im Warenkorb (inkl. Bundles)
+// - Bundles: min( stock(child) - im Warenkorb (inkl. Bundles) )
+function remainingAvailable(productId, stockMapOverride){
+  const stockMap = stockMapOverride || getStockMap();
+  const p = products.find(x=>String(x.id)===String(productId));
+  const need = getCartNeedMap();
+
+  if(!p || !isBundleProduct(p)){
+    const s = getStockFromMap(stockMap, productId);
+    if(s === null) return null;
+    return Math.max(0, Math.floor(s - (need[String(productId)]||0)));
+  }
+
+  const ids = Array.isArray(p.bundle_items) ? p.bundle_items.map(String) : [];
+  if(ids.length===0){
+    const s = getStockFromMap(stockMap, productId);
+    if(s === null) return null;
+    return Math.max(0, Math.floor(s - (need[String(productId)]||0)));
+  }
+
+  let hasFinite = false;
+  let min = Infinity;
+  for(const cid of ids){
+    const s = getStockFromMap(stockMap, cid);
+    if(s === null) continue;
+    hasFinite = true;
+    const left = Math.max(0, Math.floor(s - (need[String(cid)]||0)));
+    if(left < min) min = left;
+  }
+  if(!hasFinite) return null;
+  return Math.max(0, Math.floor(min));
+}
+
 
 
 /* ========= Tabs (stabil, ohne Abhängigkeiten) ========= */
@@ -1390,13 +1480,10 @@ function renderProducts(){
 function addToCart(productId, variantName="Standard", variantMultiplier=1){
   // Bestand prüfen (hard)
   try{
-    const stock = getStock(productId);
-    if(stock !== null){
-      const inCart = qtyInCartForProduct(productId);
-      if(inCart >= stock){
-        showToast?.("Bestand", "Nicht genug Bestand verfügbar.", { duration: 1600 });
-        return;
-      }
+    const r = remainingAvailable(productId);
+    if(r !== null && r <= 0){
+      showToast?.("Bestand", "Nicht genug Bestand verfügbar.", { duration: 1600 });
+      return;
     }
   }catch(_e){}
 
@@ -1447,6 +1534,7 @@ function renderCart(){
         ${p ? `<button class="favBtn ${isFav(p.id) ? "active" : ""}" data-fav="${p.id}" title="Merken" style="padding:4px 8px; margin-right:6px">${isFav(p.id) ? "★" : "☆"}</button>` : ``}
         <b>${escapeHtml(name)}</b>${multLabel}
         <div style="font-size:12px">${variantLabel}</div>
+        ${(()=>{ const r = remainingAvailable(item.productId); return (r===null) ? `` : `<div class=\"muted\" style=\"font-size:12px\">Noch ${r} verfügbar</div>`; })()}
       </td>
       <td><span class="count" id="qty_${escapeHtml(item.key)}">${item.qty}</span></td>
       <td>
@@ -1481,7 +1569,15 @@ function pulseQty(key){
   tb.querySelectorAll("[data-inc]").forEach(b=>b.onclick=()=>{
     const key = b.getAttribute("data-inc");
     const it = cart.find(x=>x.key===key);
-    if(it){ it.qty++; saveCart(); renderCart(); pulseQty(key); }
+    if(it){
+      const r = remainingAvailable(it.productId);
+      if(r !== null && r <= 0){
+        showToast?.("Bestand", "Nicht genug Bestand verfügbar.", { duration: 1600 });
+        return;
+      }
+      it.qty++;
+      saveCart(); renderCart(); pulseQty(key);
+    }
   });
   tb.querySelectorAll("[data-dec]").forEach(b=>b.onclick=()=>{
     const key = b.getAttribute("data-dec");
@@ -1885,6 +1981,46 @@ document.getElementById("btnCheckout").onclick = async ()=>{
     return { productId: ci.productId, name: p?.name || "Unbekannt", qty: ci.qty, variantName: ci.variantName || "Standard", variantMultiplier: Number(ci.variantMultiplier||1)||1, resources: p?.resources || [] };
   });
 
+  // ========= Bestand beim Checkout reduzieren (NICHT beim "In den Warenkorb") =========
+  // Immer mit aktuellem Bestand vom Server arbeiten (verhindert Doppel-Verkäufe bei mehreren Clients)
+  let __baseSettings = null;
+  let __stockMapServer = {};
+  try{
+    const s = await sb.from("shop_settings").select("data").eq("id",1).maybeSingle();
+    __baseSettings = s.data?.data || {};
+    __stockMapServer = (__baseSettings.stock && typeof __baseSettings.stock==="object") ? __baseSettings.stock : {};
+  }catch(e){
+    console.warn("shop_settings load for stock failed", e);
+  }
+
+  // Bedarf je "echtem" Produkt berechnen (Bundles => enthaltene Produkte)
+  const __need = {}; // productId(string) -> qty
+  for(const ci of cart){
+    const p = products.find(x=>String(x.id)===String(ci.productId));
+    const qty = Math.max(0, Math.floor(Number(ci.qty)||0));
+    if(!p || qty<=0) continue;
+
+    if(isBundleProduct(p)){
+      const ids = Array.isArray(p.bundle_items) ? p.bundle_items.map(String) : [];
+      for(const cid of ids){
+        __need[cid] = (__need[cid] || 0) + qty;
+      }
+    }else{
+      const pid = String(ci.productId);
+      __need[pid] = (__need[pid] || 0) + qty;
+    }
+  }
+
+  // Validieren (Bundle-Stock = min der enthaltenen Produkte => reicht, wenn jedes enthaltene Produkt reicht)
+  for(const pid of Object.keys(__need)){
+    const cur = getStockFromMap(__stockMapServer, pid); // null = unbegrenzt
+    if(cur !== null && __need[pid] > cur){
+      alert(`Nicht genug Bestand für Produkt ${pid}. Verfügbar: ${cur}, benötigt: ${__need[pid]}`);
+      return;
+    }
+  }
+
+
   const ins = await sb
     .from("orders")
     .insert({ status:"offen", customer:{name,phone}, items })
@@ -1895,6 +2031,41 @@ document.getElementById("btnCheckout").onclick = async ()=>{
     alert("Bestellung fehlgeschlagen (RLS insert?)");
     return;
   }
+
+
+  // ========= Bestand reduzieren (Server-Stock -> neuer Stock) =========
+  try{
+    if(__baseSettings && __need && Object.keys(__need).length){
+      const nextStock = Object.assign({}, __stockMapServer || {});
+      let changed = false;
+
+      for(const pid of Object.keys(__need)){
+        const cur = getStockFromMap(__stockMapServer, pid);
+        if(cur === null) continue; // unbegrenzt
+        const n = Math.max(0, Math.floor(cur - (__need[pid]||0)));
+        nextStock[String(pid)] = n;
+        changed = true;
+      }
+
+      if(changed){
+        const merged = Object.assign({}, __baseSettings, { stock: nextStock });
+        const up = await sb.from("shop_settings").upsert({ id: 1, data: merged });
+        if(up.error){
+          console.warn("stock upsert failed", up.error);
+          // Bestellung ist schon gespeichert -> nicht abbrechen, aber Hinweis geben
+          showToast?.("Bestand", "Bestand konnte nicht gespeichert werden (RLS?)", { duration: 2400 });
+        }else{
+          // lokal aktualisieren + UI refresh
+          window.__shopSettings = merged;
+          renderProducts();
+          renderCart();
+        }
+      }
+    }
+  }catch(e){
+    console.warn("reduce stock failed", e);
+  }
+
 
   // ✅ Notify über Supabase Edge Function (falls gespeichert)
   try{
