@@ -4200,5 +4200,43 @@ window.addEventListener("DOMContentLoaded", async ()=>{
 });
 </script>
 
+
+<script>
+function validateStockBeforeCheckout(cart, stockMap, bundleMap) {
+    let errors = [];
+    for (let item of cart) {
+        let available = 0;
+
+        if (item.type === "bundle") {
+            available = Infinity;
+            for (let part of bundleMap[item.id]) {
+                available = Math.min(
+                    available,
+                    Math.floor(stockMap[part.id] / part.qty)
+                );
+            }
+        } else {
+            available = stockMap[item.id];
+        }
+
+        if (item.qty > available) {
+            errors.push(item.name + " (verfügbar: " + available + ")");
+        }
+    }
+    return errors;
+}
+
+// Checkout Hook
+const originalCheckout = window.checkout;
+window.checkout = function () {
+    const errors = validateStockBeforeCheckout(cart, stock, bundles);
+    if (errors.length > 0) {
+        alert("Bestellung nicht möglich. Nicht genügend Bestand für:\n" + errors.join("\n"));
+        return;
+    }
+    originalCheckout();
+};
+</script>
+
 </body>
 </html>
