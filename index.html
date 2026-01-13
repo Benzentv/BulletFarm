@@ -685,6 +685,17 @@ function escapeHtml(str){
     .replace(/'/g, "&#39;");
 }
 
+
+function fmtRes(resources){
+  if(!Array.isArray(resources) || !resources.length) return "";
+  return resources.map(r=>{
+    const name = escapeHtml(r.name || "");
+    const val = escapeHtml(r.value ?? "");
+    return `<span class="chip">${name}: ${val}</span>`;
+  }).join("");
+}
+
+
 function showToast(title, msg, opts={}){
   const duration = Number(opts.duration ?? 1800) || 1800;
   const actionText = opts.actionText || "";
