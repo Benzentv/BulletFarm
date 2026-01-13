@@ -654,6 +654,7 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
   <div id="panelTheme" style="display:none"></div>
   <div id="panelBackground" style="display:none"></div>
   <div id="panelStock" style="display:none"></div>
+  <div id="panelEdge" style="display:none"></div>
   <div id="panelOrders" style="display:none"></div>
   <div id="panelNotify" style="display:none"></div>
   <div id="panelPromo" style="display:none"></div>
@@ -798,7 +799,29 @@ async function saveShopSettingsPatch(patchObj, toastTitle="Settings"){
 async function saveShopSettingsBatch(patchObj, toastTitle){
   // === EDGE Settings Save (optional) ===
   try{
-    const edgeUrl = window.__shopSettings?.admin?.edgeSettingsUrl;
+    const edgeUrl = getEdgeUrl("settings");
+  if(edgeUrl){
+    try{
+      const res = await fetch(edgeUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patch, label })
+      });
+      const js = await res.json().catch(()=>({}));
+      if(!res.ok || !js?.ok){
+        console.error("edge settings save failed", js);
+        showToast?.(label, js?.error || "Edge Save fehlgeschlagen", { duration: 2000 });
+        return { ok:false };
+      }
+      showToast?.(label, "Gespeichert", { duration: 1200 });
+      return { ok:true };
+    }catch(e){
+      console.error(e);
+      showToast?.(label, "Edge Save Fehler", { duration: 2000 });
+      return { ok:false };
+    }
+  }
+
     if(edgeUrl && String(edgeUrl).trim()){
       const res = await fetch(String(edgeUrl).trim(), {
         method: "POST",
@@ -2123,6 +2146,7 @@ const BASE_ADMIN_SECTIONS = [
   { id:"theme", label:"Theme" },
   { id:"background", label:"Background" },
   { id:"stock", label:"Bestand" },
+  { id:"edge", label:"Edge / Backend" },
   { id:"promo", label:"Aktionen" },
   { id:"orders", label:"Bestellungen" },
   { id:"notify", label:"Notify" },
@@ -2136,7 +2160,7 @@ function getAdminSections(){
 }
 
 function showPanel(id){
-  ["panelProducts","panelCategories","panelTheme","panelBackground","panelStock","panelPromo","panelOrders","panelNotify"].forEach(pid=>{
+  ["panelProducts","panelCategories","panelTheme","panelBackground","panelStock","panelEdge","panelPromo","panelOrders","panelNotify"].forEach(pid=>{
     document.getElementById(pid).style.display = (pid === "panel"+id[0].toUpperCase()+id.slice(1)) ? "" : "none";
   });
 
@@ -2145,6 +2169,7 @@ function showPanel(id){
   if(id==="theme") renderAdminTheme();
   if(id==="background") renderAdminBackground();
   if(id==="stock") renderAdminStock();
+  if(id==="edge") renderAdminEdge();
   if(id==="orders") renderAdminOrders();
   if(id==="notify") renderAdminNotify();
   if(id==="promo") renderAdminPromo();
@@ -2223,392 +2248,6 @@ document.getElementById("btnLogout").onclick = async ()=>{
 function renderAdminCategories(){
   const el = document.getElementById("panelCategories");
   el.innerHTML = `
-    <div class="card" style="margin-top:10px">
-      <div class="head"><b>Kategorien</b></div>
-      <div class="body">
-        <div style="display:flex; gap:8px; flex-wrap:wrap">
-          <input id="newCatName" placeholder="Neue Kategorie" />
-          <button class="primary" id="btnAddCat">Hinzufügen</button>
-          <button id="btnReloadCats">Neu laden</button>
-        </div>
-        <div style="height:12px"></div>
-        <div style="overflow:auto">
-          <table>
-            <thead><tr><th>Name</th><th>ID</th><th>Aktion</th></tr></thead>
-            <tbody id="catTable"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  `;
-
-  document.getElementById("btnReloadCats").onclick = async ()=>{ await loadPublic(); };
-  document.getElementById("btnAddCat").onclick = async ()=>{
-    const name = (document.getElementById("newCatName").value||"").trim();
-    if(!name) return;
-    const r = await sb.from("categories").insert({ name });
-    if(r.error){ console.error(r.error); alert("Kategorie hinzufügen fehlgeschlagen (RLS?)"); return; }
-    document.getElementById("newCatName").value="";
-    await loadPublic();
-    renderAdminCategories();
-  };
-
-  const tb = document.getElementById("catTable");
-  tb.innerHTML = categories.length ? "" : `<tr><td colspan="3" class="muted">Keine Kategorien</td></tr>`;
-
-  categories.forEach(c=>{
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><input data-name="${c.id}" value="${c.name.replaceAll('"','&quot;')}" /></td>
-      <td class="muted">${String(c.id).slice(0,8)}</td>
-      <td>
-        <button class="success" data-save="${c.id}">Speichern</button>
-        <button class="danger" data-del="${c.id}">Löschen</button>
-      </td>
-    `;
-    tb.appendChild(tr);
-  });
-
-  tb.querySelectorAll("[data-save]").forEach(b=>b.onclick=async ()=>{
-    const id = b.getAttribute("data-save");
-    const name = (tb.querySelector(`[data-name="${id}"]`).value||"").trim() || "Unbenannt";
-    const r = await sb.from("categories").update({ name }).eq("id", id);
-    if(r.error){ console.error(r.error); alert("Update fehlgeschlagen (RLS?)"); return; }
-    await loadPublic(); renderAdminCategories();
-  });
-
-  tb.querySelectorAll("[data-del]").forEach(b=>b.onclick=async ()=>{
-    const id = b.getAttribute("data-del");
-    const r = await sb.from("categories").delete().eq("id", id);
-    if(r.error){ console.error(r.error); alert("Löschen fehlgeschlagen (RLS?)"); return; }
-    await loadPublic(); renderAdminCategories();
-  });
-}
-
-/* ========= Admin: Produkte (CRUD) + Bearbeiten + Ressourcen + Bild-Vorschau ========= */
-let editProductId = null;
-
-function fmtRes(res){
-  return (res||[]).map(r=>`<span class="chip"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${formatDEInt(r.amount)}</b></span>`).join("");
-}
-function escapeHtml(s){
-  return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
-}
-
-
-
-function isBundleProduct(p){
-  return !!(p && (p.is_bundle === true || (Array.isArray(p.bundle_items) && p.bundle_items.length)));
-}
-function bundleCount(p){
-  if(!p) return 0;
-  if(Array.isArray(p.bundle_items)) return p.bundle_items.length;
-  return 0;
-}
-function renderDescriptionHtml(desc){
-  const d = String(desc || "").trim();
-  if(!d) return "";
-  // pre-wrap in CSS, so only escape
-  return `<div class="descBox">${escapeHtml(d)}</div>`;
-}
-
-// ===== Zahlen-Input: erlaubt 5000, 5.000, 5,000, 5 000 =====
-function parseAmountDE(input){
-  if(input == null) return null;
-  let s = String(input).trim();
-  if(!s) return null;
-
-  // Leerzeichen raus
-  s = s.replace(/\s+/g, "");
-
-  // Wenn Dezimal-Komma am Ende, dann 1.234,56 -> 1234.56
-  const hasCommaDecimal = /,\d+$/.test(s);
-  if(hasCommaDecimal){
-    s = s.replace(/\./g, "").replace(",", ".");
-  }else{
-    // Tausendertrenner entfernen: 1.234 / 1,234 / 1'234
-    s = s.replace(/[.,']/g, "");
-  }
-
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
-}
-
-function formatNumberDE(n, opts = {}){
-  const num = Number(n) || 0;
-  const compact = !!opts.compact;
-
-  const abs = Math.abs(num);
-  // Compact ab 1 Mio: 1,2 Mio / 3,4 Mrd
-  if(compact && abs >= 1_000_000){
-    const isBillion = abs >= 1_000_000_000;
-    const base = isBillion ? 1_000_000_000 : 1_000_000;
-    const suffix = isBillion ? " Mrd" : " Mio";
-    let v = num / base;
-
-    // eine Nachkommastelle, aber ohne ,0
-    let s = v.toFixed(1).replace(".", ",");
-    if(s.endsWith(",0")) s = s.slice(0, -2);
-    return s + suffix;
-  }
-
-  // Standard: Tausenderpunkte (de-DE)
-  return Math.round(num).toLocaleString("de-DE");
-}
-
-function formatDEInt(n){
-  // legacy wrapper
-  return formatNumberDE(n, { compact:false });
-}
-
-
-/* ========= Ressourcen-Bibliothek (Admin UX) =========
-   - Autocomplete/Suche
-   - Einfügen per Klick (nur Menge)
-   - Produkt-Ressource in Bibliothek speichern
-*/
-function normalizeResourceLibrary(lib){
-  const arr = Array.isArray(lib) ? lib : [];
-  const map = new Map();
-  for(const it of arr){
-    const name = String(it?.name || "").trim();
-    if(!name) continue;
-    const key = name.toLowerCase();
-    if(map.has(key)) continue;
-    map.set(key, { name, color: it?.color || "#7dd3fc" });
-  }
-  return Array.from(map.values()).sort((a,b)=>a.name.localeCompare(b.name, "de"));
-}
-function getResourceLibrary(){
-  const s = window.__shopSettings || {};
-  return normalizeResourceLibrary(s.resourceLibrary);
-}
-async function setResourceLibrary(lib){
-  const nextLib = normalizeResourceLibrary(lib);
-  return await saveShopSettingsBatch({ resourceLibrary: nextLib }, "Ressourcen-Bibliothek");
-}
-async function addResourceToLibrary(res, toast=true){
-  const lib = getResourceLibrary();
-  const name = String(res?.name||"").trim();
-  if(!name) return;
-  const key = name.toLowerCase();
-  const exists = lib.some(x=>String(x.name||"").toLowerCase()===key);
-  const next = exists ? lib : [...lib, { name, color: res?.color || "#7dd3fc" }];
-  const r = await setResourceLibrary(next);
-  if(toast && typeof showToast === "function"){
-    showToast("Ressourcen-Bibliothek", exists ? "Schon vorhanden ✅" : "Gespeichert ✅", { duration: 1400 });
-  }
-  return r;
-}
-function addOrReplaceProductResource(st, resName, amount, color){
-  const name = String(resName||"").trim();
-  if(!name) return;
-  const amt = Math.round(Number(amount)||0);
-  if(!Number.isFinite(amt) || amt<=0) return;
-
-  const next = (st.resources || []).slice();
-  const key = name.toLowerCase();
-  const idx = next.findIndex(x=>String(x?.name||"").trim().toLowerCase()===key);
-  const payload = { name, amount: amt, color: color || "#7dd3fc" };
-  if(idx>=0) next[idx] = Object.assign({}, next[idx], payload);
-  else next.push(payload);
-  st.setResources(next);
-}
-
-function setupResourceLibraryUI(st){
-  const searchEl = document.getElementById("libSearch");
-  const selectEl = document.getElementById("libSelect");
-  const addBtn = document.getElementById("btnLibAdd");
-  const delBtn = document.getElementById("btnLibDelete");
-  const insPromptBtn = document.getElementById("btnLibInsertPrompt");
-  const insFieldBtn = document.getElementById("btnLibInsertUseField");
-  const newNameEl = document.getElementById("libNewName");
-  const newColorEl = document.getElementById("libNewColor");
-
-  if(!searchEl || !selectEl || !addBtn || !delBtn || !insPromptBtn || !insFieldBtn) return;
-
-  const renderOptions = ()=>{
-    const q = String(searchEl.value||"").trim().toLowerCase();
-    const lib = getResourceLibrary();
-    const filtered = q ? lib.filter(x=>String(x.name||"").toLowerCase().includes(q)) : lib;
-
-    selectEl.innerHTML = "";
-    if(filtered.length===0){
-      selectEl.appendChild(new Option("— Keine Ressourcen in Bibliothek —", ""));
-      return;
-    }
-    for(const it of filtered){
-      const opt = new Option(it.name, it.name);
-      opt.setAttribute("data-color", it.color || "#7dd3fc");
-      selectEl.appendChild(opt);
-    }
-  };
-
-  // initial
-  renderOptions();
-
-  // Autocomplete/Suche
-  searchEl.oninput = renderOptions;
-
-  // Einfügen… (Prompt nach Menge)
-  insPromptBtn.onclick = ()=>{
-    const name = selectEl.value;
-    if(!name){ alert("Bitte erst eine Ressource auswählen."); return; }
-    const color = selectEl.selectedOptions?.[0]?.getAttribute("data-color") || "#7dd3fc";
-    const inp = prompt(`Menge für "${name}" eingeben:`, "1000");
-    if(inp==null) return;
-    const n = parseAmountDE(inp);
-    if(n==null || n<=0){ alert("Ungültige Menge."); return; }
-    addOrReplaceProductResource(st, name, n, color);
-  };
-
-  // Einfügen (nimmt Anzahl-Feld aus Ressourcen-Editor)
-  insFieldBtn.onclick = ()=>{
-    const name = selectEl.value;
-    if(!name){ alert("Bitte erst eine Ressource auswählen."); return; }
-    const color = selectEl.selectedOptions?.[0]?.getAttribute("data-color") || "#7dd3fc";
-    const amtEl = document.getElementById("rAmt");
-    const n = parseAmountDE(amtEl?.value || "");
-    if(n==null || n<=0){ alert("Bitte im Anzahl-Feld eine gültige Menge eintragen."); return; }
-    addOrReplaceProductResource(st, name, n, color);
-    if(amtEl) amtEl.value = "";
-  };
-
-  // Neu speichern
-  addBtn.onclick = async ()=>{
-    const name = String(newNameEl?.value || "").trim();
-    const color = String(newColorEl?.value || "#7dd3fc");
-    if(!name){ alert("Name fehlt."); return; }
-    await addResourceToLibrary({ name, color }, true);
-    if(newNameEl) newNameEl.value = "";
-    renderOptions();
-  };
-
-  // Löschen aus Bibliothek
-  delBtn.onclick = async ()=>{
-    const name = selectEl.value;
-    if(!name){ alert("Bitte erst eine Ressource auswählen."); return; }
-    const ok = confirm(`"${name}" wirklich aus der Bibliothek löschen?`);
-    if(!ok) return;
-    const lib = getResourceLibrary().filter(x=>String(x.name||"").toLowerCase()!==String(name).toLowerCase());
-    await setResourceLibrary(lib);
-    if(typeof showToast==="function") showToast("Ressourcen-Bibliothek", "Gelöscht ✅", { duration: 1400 });
-    renderOptions();
-  };
-
-  // Wenn Settings gespeichert werden (anderer Tab), kann das Panel neu gerendert werden – dann reicht renderOptions beim Öffnen.
-}
-
-function renderAdminProducts(){
-  const el = document.getElementById("panelProducts");
-
-  const catOptions = [
-    `<option value="none">Keine Kategorie</option>`,
-    ...categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`)
-  ].join("");
-
-  el.innerHTML = `
-    <div class="card" style="margin-top:10px">
-      <div class="head" style="justify-content:space-between">
-        <b>${editProductId ? "Produkt bearbeiten" : "Neues Produkt"}</b>
-        <div style="display:flex; gap:8px">
-          <button id="btnNewProd" class="primary">${editProductId ? "Neues Produkt" : "Reset"}</button>
-          <button id="btnReloadProds">Neu laden</button>
-        </div>
-      </div>
-      <div class="body">
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px">
-          <input id="pName" placeholder="Produktname" />
-          <select id="pCat">${catOptions}</select>
-          <input id="pImg" placeholder="Bild URL (optional)" style="grid-column: 1 / -1" />
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
-          <b>Badges</b>
-          <div class="muted" style="font-size:12px; margin-top:4px">Im Shop sichtbar (pro Produkt)</div>
-          <div id="badgeChecks" style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px"></div>
-        </div>
-
-        <div style="height:10px"></div>
-
-        <div class="previewBox" id="imgPreviewWrap" style="display:none">
-          <img id="imgPreview" alt="">
-        </div>
-
-        <div style="height:12px"></div>
-
-        <div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
-          <b>Ressourcen</b>
-          <div class="muted" style="font-size:12px; margin-top:4px">name / amount / color</div>
-
-          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
-            <input id="rName" placeholder="Name" style="flex:1; min-width:160px" />
-            <input id="rAmt" type="text" inputmode="numeric" placeholder="Anzahl (z.B. 5000 oder 5.000)" style="width:220px" />
-            <input id="rColor" type="color" value="#7dd3fc" style="width:70px; padding:6px" />
-            <button id="btnAddRes">Hinzufügen</button>
-          </div>
-
-          <div style="height:10px"></div>
-          <div id="resList" class="chips"></div>
-        </div>
-
-<div style="height:12px"></div>
-
-<div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
-  <b>Ressourcen-Bibliothek</b>
-  <div class="muted" style="font-size:12px; margin-top:4px">Ressourcen einmal speichern und bei Produkten per Klick einfügen.</div>
-
-  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:center">
-    <input id="libSearch" placeholder="Suchen / Autocomplete…" style="flex:1; min-width:220px" />
-    <select id="libSelect" style="flex:1; min-width:220px"></select>
-    <button id="btnLibInsertPrompt" class="primary">➕ Einfügen… (Menge)</button>
-    <button id="btnLibInsertUseField">⚡ Einfügen (nimmt Anzahl-Feld)</button>
-    <button id="btnLibDelete" class="danger">🗑 Aus Bibliothek löschen</button>
-  </div>
-
-  <div style="height:10px"></div>
-
-  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-    <input id="libNewName" placeholder="Neue Ressource (Name)" style="flex:1; min-width:220px" />
-    <input id="libNewColor" type="color" value="#7dd3fc" style="width:70px; padding:6px" />
-    <button id="btnLibAdd" class="success">💾 In Bibliothek speichern</button>
-  </div>
-
-  <div class="muted" style="margin-top:8px; font-size:12px">
-    Tipp: In den Produkt-Chips kannst du Mengen direkt ändern. Mit „💾“ speicherst du eine Produkt-Ressource in die Bibliothek.
-  </div>
-</div>
-
-
-<div style="height:12px"></div>
-
-<div style="border:1px solid var(--border); border-radius:14px; padding:12px; background: rgba(255,255,255,.02)">
-  <b>Varianten</b>
-  <div class="muted" style="font-size:12px; margin-top:4px">name / multiplier (wirkt auf Ressourcen)</div>
-
-  <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
-    <input id="vName" placeholder="Variante (z.B. Small)" style="flex:1; min-width:160px" />
-    <input id="vMult" type="number" step="0.1" placeholder="Multiplier" value="1" style="width:140px" />
-    <button id="btnAddVar">Hinzufügen</button>
-  </div>
-
-  <div style="height:10px"></div>
-  <div id="varList" class="chips"></div>
-</div>
-
-        <div style="height:12px"></div>
-        <div class="muted" style="font-size:12px; margin-bottom:6px"><b>Edge Function (optional)</b> – sicher speichern ohne Supabase-RLS für Anon-Updates.</div>
-        <input id="edgeSettingsUrl" placeholder="Edge Settings URL (optional)" value="${escapeHtml(String((window.__shopSettings?.admin?.edgeSettingsUrl)||""))}" />
-        <div style="height:10px"></div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap">
-          <button class="success" id="btnSaveProd">${editProductId ? "✅ Speichern" : "✅ Hinzufügen"}</button>
-          <button class="danger" id="btnDeleteProd" style="display:${editProductId ? "" : "none"}">🗑 Löschen</button>
-        </div>
-      </div>
-    </div>
-
     <div class="card" style="margin-top:12px">
       <div class="head"><b>Produkte</b></div>
       <div class="body" style="overflow:auto">
@@ -3342,6 +2981,21 @@ function applyBackgroundFromSettings(){
   root.setProperty("--bg-img-url", "none");
 }
 
+
+/* ========= Edge / Backend Config (gespeichert in shop_settings.edge) ========= */
+function getEdgeConfig(){
+  const s = window.__shopSettings || {};
+  const e = s.edge;
+  return (e && typeof e === "object") ? e : {};
+}
+function getEdgeUrl(kind){
+  const e = getEdgeConfig();
+  if(kind==="settings") return String(e.settingsUrl || "").trim();
+  if(kind==="checkout") return String(e.checkoutUrl || "").trim();
+  return "";
+}
+
+
 function renderAdminBackground(){
   const el = document.getElementById("panelBackground");
   const bg = (window.__shopSettings && window.__shopSettings.bgImage) ? window.__shopSettings.bgImage : {};
@@ -3501,6 +3155,99 @@ function renderAdminStock(){
     }
   };
 }
+
+/* ========= Admin: Edge / Backend ========= */
+function renderAdminEdge(){
+  const el = document.getElementById("panelEdge");
+  const e = getEdgeConfig();
+  const settingsUrl = String(e.settingsUrl || "").trim();
+  const checkoutUrl = String(e.checkoutUrl || "").trim();
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px">
+      <div class="head"><b>Edge / Backend</b></div>
+      <div class="body">
+        <div class="muted" style="font-size:12px">
+          Hier konfigurierst du die URLs deiner Supabase Edge Functions. So kann der Shop sicher speichern (Settings)
+          und Checkout + Bestandsreduktion atomar ausführen.
+        </div>
+
+        <div style="height:12px"></div>
+
+        <div class="muted" style="font-size:12px; font-weight:800">1) Settings Save (shop-settings-save)</div>
+        <input id="edgeSettingsUrl" placeholder="https://<project>.functions.supabase.co/shop-settings-save"
+               value="${escapeHtml(settingsUrl)}" />
+        <div class="muted" style="font-size:11px; margin-top:6px">
+          Wird für Admin-Speichern genutzt (Background, Bestand, Theme, etc.).
+        </div>
+
+        <div style="height:14px"></div>
+
+        <div class="muted" style="font-size:12px; font-weight:800">2) Checkout (checkout)</div>
+        <input id="edgeCheckoutUrl" placeholder="https://<project>.functions.supabase.co/checkout"
+               value="${escapeHtml(checkoutUrl)}" />
+        <div class="muted" style="font-size:11px; margin-top:6px">
+          Wird beim Checkout genutzt: Bestandsprüfung + Order speichern + Bestand reduzieren.
+        </div>
+
+        <div style="height:14px"></div>
+
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <button id="btnEdgeSave" class="success">💾 Speichern</button>
+          <button id="btnEdgeApply" class="primary">🔄 Anwenden</button>
+          <button id="btnEdgeClear" class="danger">Reset</button>
+        </div>
+
+        <div id="edgeStatus" class="muted" style="margin-top:10px; font-size:12px"></div>
+      </div>
+    </div>
+  `;
+
+  const updateStatus = ()=>{
+    const sUrl = (document.getElementById("edgeSettingsUrl").value || "").trim();
+    const cUrl = (document.getElementById("edgeCheckoutUrl").value || "").trim();
+    const ok1 = !!sUrl;
+    const ok2 = !!cUrl;
+    const parts = [
+      ok1 ? "✅ Settings-Edge aktiv" : "⚠️ Settings-Edge nicht gesetzt (Fallback/unsicher)",
+      ok2 ? "✅ Checkout-Edge aktiv" : "⚠️ Checkout-Edge nicht gesetzt (kein atomarer Bestand)"
+    ];
+    document.getElementById("edgeStatus").textContent = parts.join(" • ");
+  };
+
+  updateStatus();
+  document.getElementById("edgeSettingsUrl").addEventListener("input", updateStatus);
+  document.getElementById("edgeCheckoutUrl").addEventListener("input", updateStatus);
+
+  const readForm = ()=>({
+    settingsUrl: (document.getElementById("edgeSettingsUrl").value || "").trim(),
+    checkoutUrl: (document.getElementById("edgeCheckoutUrl").value || "").trim()
+  });
+
+  document.getElementById("btnEdgeApply").onclick = ()=>{
+    window.__shopSettings = Object.assign({}, window.__shopSettings||{}, { edge: readForm() });
+    updateStatus();
+    showToast?.("Edge", "Angewendet", { duration: 1100 });
+  };
+
+  document.getElementById("btnEdgeSave").onclick = async ()=>{
+    const patch = { edge: readForm() };
+    const r = await saveShopSettingsBatch(patch, "Edge");
+    if(r?.ok){
+      window.__shopSettings = Object.assign({}, window.__shopSettings||{}, patch);
+      updateStatus();
+    }
+  };
+
+  document.getElementById("btnEdgeClear").onclick = async ()=>{
+    const patch = { edge: { settingsUrl:"", checkoutUrl:"" } };
+    const r = await saveShopSettingsBatch(patch, "Edge");
+    if(r?.ok){
+      window.__shopSettings = Object.assign({}, window.__shopSettings||{}, patch);
+      renderAdminEdge();
+    }
+  };
+}
 function renderAdminOrders(){
   const el = document.getElementById("panelOrders");
   const showTests = !isStatusOnly();
@@ -3630,6 +3377,8 @@ async function createTestOrderAndNotify(){
 }
 
 async function createTestOrderInternal(sendNotify){
+  const checkoutUrl = getEdgeUrl("checkout");
+
   try{
     // 1–2 zufällige Produkte
     const pick = (arr)=>arr[Math.floor(Math.random()*arr.length)];
@@ -3663,7 +3412,33 @@ async function createTestOrderInternal(sendNotify){
       items: chosen
     };
 
-    const ins = await sb.from("orders").insert(payload).select("id").maybeSingle();
+    const ins = await sb
+  if(checkoutUrl){
+    try{
+      const res = await fetch(checkoutUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customer, items, required_counts })
+      });
+      const js = await res.json().catch(()=>({}));
+      if(!res.ok || !js?.ok){
+        showToast?.("Checkout", js?.error || "Checkout fehlgeschlagen", { duration: 2200 });
+        return;
+      }
+      // refresh settings + rerender (stock changed)
+      await loadPublic?.();
+      renderCart?.();
+      showToast?.("Checkout", "Bestellung gesendet", { duration: 1400 });
+      closeCart?.();
+      return;
+    }catch(e){
+      console.error(e);
+      showToast?.("Checkout", "Edge Checkout Fehler", { duration: 2200 });
+      return;
+    }
+  }
+
+.from("orders").insert(payload).select("id").maybeSingle();
     if(ins.error){ console.error(ins.error); return { ok:false }; }
 
     if(sendNotify){
