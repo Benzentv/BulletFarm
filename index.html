@@ -144,6 +144,12 @@
     }
     button{cursor:pointer; font-weight:800}
     button.primary{border-color: rgba(125,211,252,.55); background: rgba(125,211,252,.10)}
+
+    button.primary:disabled{
+      opacity:.45;
+      cursor:not-allowed;
+      filter: grayscale(20%);
+    }
     button.success{border-color: rgba(52,211,153,.55); background: rgba(52,211,153,.10)}
     button.danger{border-color: rgba(251,113,133,.55); background: rgba(251,113,133,.10)}
     .muted{color:var(--muted)}
@@ -647,6 +653,7 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
   <div id="panelCategories" style="display:none"></div>
   <div id="panelTheme" style="display:none"></div>
   <div id="panelBackground" style="display:none"></div>
+  <div id="panelStock" style="display:none"></div>
   <div id="panelOrders" style="display:none"></div>
   <div id="panelNotify" style="display:none"></div>
   <div id="panelPromo" style="display:none"></div>
@@ -708,6 +715,18 @@ function showToast(title, msg, opts={}){
 
 /* Button Double-Click Schutz + „✔ hinzugefügt“ Feedback */
 function addToCartUX(btnEl, productId, variantName, variantMultiplier){
+  // Bestand prüfen
+  try{
+    const stock = getStock(productId);
+    if(stock !== null){
+      const inCart = qtyInCartForProduct(productId);
+      if(inCart >= stock){
+        showToast?.("Bestand", "Nicht genug Bestand verfügbar.", { duration: 1600 });
+        return;
+      }
+    }
+  }catch(_e){}
+
   if(!btnEl) { addToCart(productId, variantName, variantMultiplier); return; }
   if(btnEl.disabled) return;
 
@@ -1076,6 +1095,29 @@ function toggleFav(id){
   renderProducts();
 }
 
+
+/* ========= Bestand / Inventory (gespeichert in shop_settings.data.stock) ========= */
+function getStockMap(){
+  const s = window.__shopSettings || {};
+  const m = s.stock;
+  return (m && typeof m === "object") ? m : {};
+}
+function getStock(productId){
+  const m = getStockMap();
+  const v = m[String(productId)];
+  const n = Number(v);
+  // undefined/null/leer => kein Limit (unbegrenzt)
+  if(v === undefined || v === null || v === "") return null;
+  if(!Number.isFinite(n)) return null;
+  return Math.max(0, Math.floor(n));
+}
+function qtyInCartForProduct(productId){
+  return cart
+    .filter(it=>String(it.productId)===String(productId))
+    .reduce((s,it)=>s + (Number(it.qty)||0), 0);
+}
+
+
 /* ========= Tabs (stabil, ohne Abhängigkeiten) ========= */
 function setTab(t){
   // If preview is open, close it when navigating (e.g., Warenkorb)
@@ -1253,8 +1295,14 @@ function renderProducts(){
       ` : ``}
 
       <div class="chips">${fmtRes(p.resources || [])}</div>
+      ${(() => {
+        const st = getStock(p.id);
+        if(st === null) return ``;
+        if(st <= 0) return `<div class="muted" style="margin-top:8px; font-weight:900; color: var(--danger)">Ausverkauft</div>`;
+        return `<div class="muted" style="margin-top:8px; font-weight:800">Bestand: ${st}</div>`;
+      })()}
       <div style="height:8px"></div>
-      <button class="primary" data-add="${p.id}">In den Warenkorb</button>
+      <button class="primary" data-add="${p.id}" ${(() => { const st=getStock(p.id); return (st!==null && st<=0) ? "disabled" : ""; })()}>In den Warenkorb</button>
     `;
 
     list.appendChild(div);
@@ -1340,6 +1388,18 @@ function renderProducts(){
 }
 
 function addToCart(productId, variantName="Standard", variantMultiplier=1){
+  // Bestand prüfen (hard)
+  try{
+    const stock = getStock(productId);
+    if(stock !== null){
+      const inCart = qtyInCartForProduct(productId);
+      if(inCart >= stock){
+        showToast?.("Bestand", "Nicht genug Bestand verfügbar.", { duration: 1600 });
+        return;
+      }
+    }
+  }catch(_e){}
+
   const key = productId + "||" + String(variantName||"Standard") + "||" + String(variantMultiplier||1);
   const it = cart.find(x=>x.key===key);
   if(it) it.qty += 1;
@@ -1891,6 +1951,7 @@ const BASE_ADMIN_SECTIONS = [
   { id:"categories", label:"Kategorien" },
   { id:"theme", label:"Theme" },
   { id:"background", label:"Background" },
+  { id:"stock", label:"Bestand" },
   { id:"promo", label:"Aktionen" },
   { id:"orders", label:"Bestellungen" },
   { id:"notify", label:"Notify" },
@@ -1904,7 +1965,7 @@ function getAdminSections(){
 }
 
 function showPanel(id){
-  ["panelProducts","panelCategories","panelTheme","panelBackground","panelPromo","panelOrders","panelNotify"].forEach(pid=>{
+  ["panelProducts","panelCategories","panelTheme","panelBackground","panelStock","panelPromo","panelOrders","panelNotify"].forEach(pid=>{
     document.getElementById(pid).style.display = (pid === "panel"+id[0].toUpperCase()+id.slice(1)) ? "" : "none";
   });
 
@@ -1912,6 +1973,7 @@ function showPanel(id){
   if(id==="categories") renderAdminCategories();
   if(id==="theme") renderAdminTheme();
   if(id==="background") renderAdminBackground();
+  if(id==="stock") renderAdminStock();
   if(id==="orders") renderAdminOrders();
   if(id==="notify") renderAdminNotify();
   if(id==="promo") renderAdminPromo();
@@ -3185,6 +3247,83 @@ function renderAdminBackground(){
       window.__shopSettings = Object.assign({}, window.__shopSettings || {}, patch);
       applyBackgroundFromSettings();
       renderAdminBackground();
+    }
+  };
+}
+
+/* ========= Admin: Bestand ========= */
+function renderAdminStock(){
+  const el = document.getElementById("panelStock");
+  const stockMap = getStockMap();
+
+  const rows = (products||[]).slice()
+    .sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"de"))
+    .map(p=>{
+      const id = String(p.id);
+      const cur = stockMap[id];
+      const val = (cur === undefined || cur === null) ? "" : String(cur);
+      return `
+        <tr data-id="${escapeHtml(id)}">
+          <td><b>${escapeHtml(p.name||"")}</b><div class="muted" style="font-size:11px">${escapeHtml(id)}</div></td>
+          <td style="width:220px">
+            <input class="stockInp" type="number" min="0" step="1" placeholder="unbegrenzt" value="${escapeHtml(val)}" style="width:100%" />
+            <div class="muted" style="font-size:11px; margin-top:6px">leer = unbegrenzt</div>
+          </td>
+        </tr>
+      `;
+    }).join("");
+
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px">
+      <div class="head">
+        <b>Bestand</b>
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <button id="btnStockApply" class="primary">🔄 Anwenden</button>
+          <button id="btnStockSave" class="success">💾 Speichern</button>
+        </div>
+      </div>
+      <div class="body">
+        <div class="muted" style="font-size:12px">
+          Pro Produkt Bestand setzen. Im Shop wird der Bestand angezeigt; bei 0 ist „In den Warenkorb“ deaktiviert.
+        </div>
+        <div style="height:10px"></div>
+        <div style="overflow:auto; max-height:55vh">
+          <table>
+            <thead><tr><th>Produkt</th><th>Bestand</th></tr></thead>
+            <tbody>
+              ${rows || `<tr><td class="muted" colspan="2">Keine Produkte geladen.</td></tr>`}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const readTable = ()=>{
+    const next = {};
+    el.querySelectorAll("tr[data-id]").forEach(tr=>{
+      const id = tr.getAttribute("data-id");
+      const inp = tr.querySelector(".stockInp");
+      const raw = (inp.value || "").trim();
+      if(raw === "") return; // unbegrenzt
+      const n = Math.max(0, Math.floor(Number(raw)));
+      if(Number.isFinite(n)) next[String(id)] = n;
+    });
+    return next;
+  };
+
+  document.getElementById("btnStockApply").onclick = ()=>{
+    window.__shopSettings = Object.assign({}, window.__shopSettings||{}, { stock: readTable() });
+    renderProducts();
+    showToast?.("Bestand", "Angewendet", { duration: 1100 });
+  };
+
+  document.getElementById("btnStockSave").onclick = async ()=>{
+    const patch = { stock: readTable() };
+    const r = await saveShopSettingsBatch(patch, "Bestand");
+    if(r?.ok){
+      window.__shopSettings = Object.assign({}, window.__shopSettings||{}, patch);
+      renderProducts();
     }
   };
 }
