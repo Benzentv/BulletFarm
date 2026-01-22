@@ -9,31 +9,7 @@
   <link rel="icon" href="data:," />
 
   <!-- Supabase lokal im Repo-Root -->
-  <script defer src="./supabase.min.js">
-  // ========= Discord: Status-Update für bestehende Bestellung =========
-  async function notifyOrderStatusChange(orderId, status){
-    try{
-      const n = window.__shopSettings?.notify;
-      if(!n?.enabled || !n?.edgeFunctionUrl) return;
-
-      await fetch(n.edgeFunctionUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": "Bearer " + SUPABASE_ANON_KEY
-        },
-        body: JSON.stringify({
-          order_id: orderId,
-          status: status
-        })
-      });
-    }catch(e){
-      console.warn("Status notify failed", e);
-    }
-  }
-
-
-</script>
+  <script defer src="./supabase.min.js"></script>
 
   <style>
     :root{
@@ -3292,6 +3268,31 @@ function renderAdminTheme(){
   };
 }
 
+
+
+
+// ✅ Discord / Edge Function über Statusänderungen informieren
+async function notifyOrderStatusChange(orderId, status){
+  try{
+    const n = window.__shopSettings?.notify;
+    if(!n?.enabled || !n?.edgeFunctionUrl) return;
+
+    await fetch(n.edgeFunctionUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({
+        order_id: orderId,
+        status: status,
+        type: "status_update"
+      })
+    });
+  }catch(e){
+    console.warn("notifyOrderStatusChange failed", e);
+  }
+}
 
 /* ========= Admin: Orders (Filter + Einklappen + Archivieren + Löschen) ========= */
 let ordersCache = [];
