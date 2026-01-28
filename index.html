@@ -235,49 +235,6 @@
 .badge.b-premium{ border-color: rgba(125,211,252,.65); }
 .badge.b-sale20{ border-color: rgba(52,211,153,.55); }
 .badge.b-sale50{ border-color: rgba(251,113,133,.55); box-shadow: 0 0 0 3px rgba(251,113,133,.08) inset; }
-
-
-.cat-green{ --cat-color:#22c55e; }
-.cat-blue{ --cat-color:#3b82f6; }
-.cat-purple{ --cat-color:#a855f7; }
-.cat-cyan{ --cat-color:#06b6d4; }
-.cat-yellow{ --cat-color:#eab308; }
-.cat-red{ --cat-color:#ef4444; }
-.cat-orange{ --cat-color:#f97316; }
-.cat-pink{ --cat-color:#ec4899; }
-.cat-gray{ --cat-color:#9ca3af; }
-.cat-default{ --cat-color:#94a3b8; }
-
-.catBadge{
-  border-color:color-mix(in srgb, var(--cat-color) 40%, transparent);
-  color:var(--cat-color);
-}
-.catBadge-dot{
-  background:var(--cat-color);
-}
-.catBadge-icon{
-  font-size:12px;
-  opacity:.9;
-}
-
-.catBadge{
-  display:inline-flex;
-  align-items:center;
-  gap:6px;
-  padding:2px 8px;
-  border-radius:999px;
-  font-size:11px;
-  background:rgba(255,255,255,0.04);
-  border:1px solid var(--border-soft,#1f2933);
-  color:var(--muted,#94a3b8);
-  white-space:nowrap;
-}
-.catBadge-dot{
-  width:8px;
-  height:8px;
-  border-radius:999px;
-  background:var(--primary-soft,#22c55e33);
-}
 .badgeRow{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
 
@@ -945,7 +902,7 @@ function openProductPreview(productId){
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
           <b>${escapeHtml(p.name)}</b>
-          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge ${getCategoryColorClass(p.category_id)}"><span class="catBadge-dot"></span><span class="catBadge-icon">${getCategoryIcon(p.category_id)}</span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span></div>
+          <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
         </div>
       </div>
       ${badgeRow || ``}
@@ -1109,6 +1066,15 @@ function badgesToHtml(badges, opts={}){
   return where==="overlay"
     ? `<div class="badgeStack">${items}</div>`
     : `<div class="badgeRow">${items}</div>`;
+
+function badgesRowEditable(p){
+  const keys = normalizeBadges(p.badges || []);
+  const active = new Set(keys);
+  const items = BADGE_OPTIONS.map(opt=>{
+    const isOn = active.has(opt.key);
+    return `<button type="button" class="badgeToggle ${isOn ? "active" : ""}" data-badge-key="${opt.key}">${escapeHtml(opt.label)}</button>`;
+  }).join("");
+  return `<div class="badgeRow editableBadges" data-badges-product="${p.id}">${items}</div>`;
 }
 let cart = JSON.parse(localStorage.getItem("bf_cart") || "[]");
 let favs = new Set(JSON.parse(localStorage.getItem("bf_favs") || "[]"));
@@ -1298,19 +1264,19 @@ function renderFilter(){
   const sel = document.getElementById("catFilter");
   const prev = sel.value || "all";
   sel.innerHTML = "";
-
   sel.appendChild(new Option("Alle Kategorien", "all"));
-  sel.appendChild(new Option("▫️ Keine Kategorie", "none"));
-
-  for(const c of categories){
-    const icon = getCategoryIcon(c.id);
-    sel.appendChild(new Option(icon + " " + c.name, c.id));
-  }
-
+  sel.appendChild(new Option("Keine Kategorie", "none"));
+  for(const c of categories) sel.appendChild(new Option(c.name, c.id));
   sel.value = prev;
   sel.onchange = renderProducts;
-  document.getElementById("searchBox").oninput = renderProducts;
+
+  const searchEl = document.getElementById("searchBox");
+  if(searchEl) searchEl.oninput = renderProducts;
+
+  const sortSel = document.getElementById("sortBox");
+  if(sortSel) sortSel.onchange = renderProducts;
 }
+
 
 
 function getVariants(p){
@@ -1357,52 +1323,6 @@ function bindShopTabs(){
   };
   updateShopTabs();
 }
-
-function getCategoryColorClass(catId){
-  const c = Array.isArray(categories) ? categories.find(x=>String(x.id)===String(catId)) : null;
-  if(!c || !c.name) return "cat-default";
-  const n = c.name.toLowerCase();
-
-  // Deutsche Kategorienamen
-  if(n.includes("langwaffe")) return "cat-green";
-  if(n.includes("kurzwaffe")) return "cat-blue";
-  if(n.includes("sniper")) return "cat-purple";
-  if(n.includes("spezial")) return "cat-red";
-  if(n.includes("munition")) return "cat-yellow";
-  if(n.includes("aufsätze") || n.includes("aufsatz")) return "cat-cyan";
-  if(n.includes("stichwaffe")) return "cat-orange";
-  if(n.includes("airdrop")) return "cat-pink";
-  if(n.includes("sonstig")) return "cat-gray";
-
-  // Englische Fallbacks (für zukünftige Kategorien)
-  if(n.includes("pistol")) return "cat-blue";
-  if(n.includes("sturm") || n.includes("gewehr") || n.includes("rifle")) return "cat-green";
-  if(n.includes("smg") || n.includes("mp")) return "cat-cyan";
-
-  return "cat-default";
-}
-}
-
-
-function getCategoryIcon(catId){
-  const c = Array.isArray(categories) ? categories.find(x=>String(x.id)===String(catId)) : null;
-  if(!c || !c.name) return "📦";
-  const n = c.name.toLowerCase();
-
-  if(n.includes("langwaffe")) return "🔫";
-  if(n.includes("kurzwaffe")) return "🔫";
-  if(n.includes("sniper")) return "🎯";
-  if(n.includes("spezial")) return "💥";
-  if(n.includes("munition")) return "🧨";
-  if(n.includes("aufsätze") || n.includes("aufsatz")) return "⚙️";
-  if(n.includes("stichwaffe")) return "🗡️";
-  if(n.includes("airdrop")) return "📦";
-  if(n.includes("sonstig")) return "📁";
-
-  // Fallback
-  return "📦";
-}
-
 function renderProducts(){
   const list = document.getElementById("productList");
   list.innerHTML = "";
@@ -1416,6 +1336,23 @@ function renderProducts(){
   if(filter==="none") shown = shown.filter(p=>!p.category_id);
   else if(filter!=="all") shown = shown.filter(p=>p.category_id===filter);
   if(q) shown = shown.filter(p=>String(p.name||"").toLowerCase().includes(q));
+
+  const sortSel = document.getElementById("sortBox");
+  const sort = sortSel ? sortSel.value : "default";
+
+  if(sort === "price_asc"){
+    shown = shown.slice().sort((a,b)=>getProductPrice(a) - getProductPrice(b));
+  }else if(sort === "price_desc"){
+    shown = shown.slice().sort((a,b)=>getProductPrice(b) - getProductPrice(a));
+  }else if(sort === "popular"){
+    shown = shown.slice().sort((a,b)=>getProductPopularity(b) - getProductPopularity(a));
+  }else if(sort === "newest"){
+    shown = shown.slice().sort((a,b)=>{
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+  }
 
 
   // Bundles / Produkte trennen
@@ -1460,7 +1397,7 @@ function renderProducts(){
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
           <b>${escapeHtml(p.name)}</b>
-          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge ${getCategoryColorClass(p.category_id)}"><span class="catBadge-dot"></span><span class="catBadge-icon">${getCategoryIcon(p.category_id)}</span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span></div>
+          <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
         </div>
         ${!img ? `
           <button class="favBtn ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">
@@ -2386,6 +2323,12 @@ let editProductId = null;
 function fmtRes(res){
   return (res||[]).map(r=>`<span class="chip"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${formatDEInt(r.amount)}</b></span>`).join("");
 }
+
+function fmtResEditable(p){
+  const res = Array.isArray(p.resources) ? p.resources : [];
+  if(!res.length) return `<span class="muted">—</span>`;
+  return res.map((r, idx)=>`<span class="chip resChip" data-res-product="${p.id}" data-res-index="${idx}"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${formatDEInt(r.amount)}</b></span>`).join("");
+}
 function escapeHtml(s){
   return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
 }
@@ -2602,12 +2545,6 @@ function renderAdminProducts(){
     ...categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`)
   ].join("");
 
-  const catFilterOptions = [
-    `<option value="all">Alle Kategorien</option>`,
-    `<option value="none">Ohne Kategorie</option>`,
-    ...categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`)
-  ].join("");
-
   el.innerHTML = `
     <div class="card" style="margin-top:10px">
       <div class="head" style="justify-content:space-between">
@@ -2708,15 +2645,7 @@ function renderAdminProducts(){
     </div>
 
     <div class="card" style="margin-top:12px">
-      <div class="head" style="justify-content:space-between; gap:8px; flex-wrap:wrap">
-        <b>Produkte</b>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
-          <select id="adminProdFilter" style="min-width:160px">
-            ${catFilterOptions}
-          </select>
-          <input id="adminProdSearch" placeholder="Suche (Name / ID)" style="min-width:160px" />
-        </div>
-      </div>
+      <div class="head"><b>Produkte</b></div>
       <div class="body" style="overflow:auto">
         <table>
           <thead><tr><th></th><th>Bild</th><th>Name</th><th>Kategorie</th><th>Badges</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
@@ -2772,15 +2701,6 @@ function renderAdminProducts(){
   };
 
   renderProductsTable();
-
-  const catFilterEl = document.getElementById("adminProdFilter");
-  const searchEl = document.getElementById("adminProdSearch");
-  if(catFilterEl){
-    catFilterEl.onchange = ()=>renderProductsTable();
-  }
-  if(searchEl){
-    searchEl.addEventListener("input", ()=>renderProductsTable());
-  }
 
   // Bundle-Builder UI
   (function setupBundleBuilder(){
@@ -3142,44 +3062,14 @@ function renderBadgeChecks(st){
   });
 }
 
-
-function getCategoryNameById(id){
-  if(!id) return null;
-  try{
-    if(!Array.isArray(categories)) return null;
-    const c = categories.find(c=> String(c.id) === String(id));
-    return c ? c.name : null;
-  }catch(e){
-    return null;
-  }
-}
-
 function renderProductsTable(){
   const tb = document.getElementById("prodTable");
-  if(!tb) return;
-
-  const filterEl = document.getElementById("adminProdFilter");
-  const searchEl = document.getElementById("adminProdSearch");
-  const filter = filterEl ? filterEl.value : "all";
-  const q = (searchEl ? searchEl.value : "").trim().toLowerCase();
-
-  let list = products.slice();
-  if(filter === "none") list = list.filter(p=>!p.category_id);
-  else if(filter && filter !== "all") list = list.filter(p=>String(p.category_id)===String(filter));
-  if(q){
-    list = list.filter(p=>{
-      const name = String(p.name||"").toLowerCase();
-      const id = String(p.id||"").toLowerCase();
-      return name.includes(q) || id.includes(q);
-    });
-  }
-
-  tb.innerHTML = list.length ? "" : `<tr><td colspan="7" class="muted">Keine Produkte</td></tr>`;
+  tb.innerHTML = products.length ? "" : `<tr><td colspan="7" class="muted">Keine Produkte</td></tr>`;
 
   // Drag & Drop Zustand
   let dragId = null;
 
-  list.forEach(p=>{
+  products.forEach(p=>{
     const tr = document.createElement("tr");
     tr.setAttribute("data-id", p.id);
     tr.draggable = true;
@@ -3188,9 +3078,9 @@ function renderProductsTable(){
       <td style="width:44px"><span title="Ziehen zum Sortieren" style="cursor:grab; font-weight:900" aria-label="drag">⠿</span></td>
       <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:56px;height:40px;object-fit:cover;border-radius:10px;border:1px solid var(--border)" onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
       <td><b>${escapeHtml(p.name)}</b><div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div></td>
-      <td class="muted">${(getCategoryNameById(p.category_id) || (p.category_id ? String(p.category_id).slice(0,8) : "—"))}</td>
-      <td>${badgesToHtml(p.badges, { where: "row" }) || `<span class="muted">—</span>`}</td>
-      <td>${fmtRes(p.resources)}</td>
+      <td class="muted">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
+      <td>${badgesRowEditable(p)}</td>
+      <td>${fmtResEditable(p)}</td>
       <td style="white-space:nowrap">
         <button class="primary" data-edit="${p.id}">Bearbeiten</button>
         <button data-prev="${p.id}">Vorschau</button>
@@ -3246,8 +3136,60 @@ function renderProductsTable(){
   tb.querySelectorAll("[data-dup]").forEach(b=>b.onclick=()=>{
     duplicateProduct(b.getAttribute("data-dup"));
   });
-}
 
+  tb.querySelectorAll(".resChip").forEach(chip=>{
+    chip.onclick = async (e)=>{
+      e.stopPropagation();
+      const prodId = chip.getAttribute("data-res-product");
+      const idx = Number(chip.getAttribute("data-res-index") || "0");
+      const p = products.find(x=>String(x.id)===String(prodId));
+      if(!p || !Array.isArray(p.resources) || !p.resources[idx]) return;
+      const r = p.resources[idx];
+      const current = (typeof r.amount === "number") ? r.amount : parseAmountDE(String(r.amount||""));
+      const val = prompt(`Neuer Betrag für ${r.name}:`, current != null ? String(current) : "");
+      if(val === null) return;
+      const parsed = parseAmountDE(val);
+      if(parsed == null){
+        alert("Ungültige Zahl.");
+        return;
+      }
+      const nextRes = p.resources.slice();
+      nextRes[idx] = { ...r, amount: parsed };
+      const u = await sb.from("products").update({ resources: nextRes }).eq("id", p.id);
+      if(u.error){
+        console.error(u.error);
+        alert("Speichern fehlgeschlagen (RLS?)");
+        return;
+      }
+      p.resources = nextRes;
+      renderProductsTable();
+      if(typeof showToast === "function") showToast("Preis aktualisiert", p.name, { duration: 1600 });
+    };
+  });
+
+  tb.querySelectorAll(".editableBadges .badgeToggle").forEach(btn=>{
+    btn.onclick = async (e)=>{
+      e.stopPropagation();
+      const wrap = btn.closest(".editableBadges");
+      const prodId = wrap ? wrap.getAttribute("data-badges-product") : null;
+      if(!prodId) return;
+      const p = products.find(x=>String(x.id)===String(prodId));
+      if(!p) return;
+      const key = btn.getAttribute("data-badge-key");
+      const cur = new Set(normalizeBadges(p.badges || []));
+      if(cur.has(key)) cur.delete(key); else cur.add(key);
+      const next = Array.from(cur);
+      const u = await sb.from("products").update({ badges: next }).eq("id", p.id);
+      if(u.error){
+        console.error(u.error);
+        alert("Badges speichern fehlgeschlagen (RLS?)");
+        return;
+      }
+      p.badges = next;
+      renderProductsTable();
+    };
+  });
+}
 
 /* ========= Admin: Theme (mehr Farben + Live Vorschau + Speichern) ========= */
 function renderAdminTheme(){
@@ -3416,31 +3358,6 @@ function renderAdminTheme(){
   };
 }
 
-
-
-
-// ✅ Discord / Edge Function über Statusänderungen informieren
-async function notifyOrderStatusChange(orderId, status){
-  try{
-    const n = window.__shopSettings?.notify;
-    if(!n?.enabled || !n?.edgeFunctionUrl) return;
-
-    await fetch(n.edgeFunctionUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer " + SUPABASE_ANON_KEY
-      },
-      body: JSON.stringify({
-        order_id: orderId,
-        status: status,
-        type: "status_update"
-      })
-    });
-  }catch(e){
-    console.warn("notifyOrderStatusChange failed", e);
-  }
-}
 
 /* ========= Admin: Orders (Filter + Einklappen + Archivieren + Löschen) ========= */
 let ordersCache = [];
