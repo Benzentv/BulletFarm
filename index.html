@@ -3279,23 +3279,39 @@ function renderBadgeChecks(st){
   }).join("");
 
   box.querySelectorAll("input[data-badge]").forEach(inp=>{
-    inp.onchange = ()=>{
+    inp.onchange = async ()=>{
       const key = inp.getAttribute("data-badge");
       const next = new Set(normalizeBadges(st.badges));
       if(inp.checked) next.add(key); else next.delete(key);
       st.badges = Array.from(next);
-      // optional small feedback
-      try{ showToast("Badges", "Gespeichert im Editor (Speichern klicken).", { duration: 900 }); }catch(e){}
+
+      // Direkt in DB speichern, wenn ein Produkt im Editor ausgewählt ist
+      try{
+        if(window.editProductId && window.sb){
+          const prodId = window.editProductId;
+          const upd = await sb.from("products").update({ badges: st.badges }).eq("id", prodId);
+          if(upd.error){
+            console.error(upd.error);
+            alert("Badge im Editor konnte nicht gespeichert werden.");
+          }else{
+            // lokale products-Liste updaten
+            try{
+              const p = products.find(x=>String(x.id)===String(prodId));
+              if(p) p.badges = st.badges.slice();
+              if(typeof renderProductsTable === "function") renderProductsTable();
+            }catch(_){}
+          }
+        }
+      }catch(e){
+        console.error(e);
+      }
+
+      // optional kleines Feedback
+      try{ showToast("Badges", "Gespeichert.", { duration: 900 }); }catch(e){}
     };
   });
 }
-
-
-function getCategoryNameById(id){
-  if(!id) return null;
-  try{
-    if(!Array.isArray(categories)) return null;
-    const c = categories.find(c=> String(c.id) === String(id));
+gories.find(c=> String(c.id) === String(id));
     return c ? c.name : null;
   }catch(e){
     return null;
