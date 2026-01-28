@@ -236,6 +236,30 @@
 .badge.b-sale20{ border-color: rgba(52,211,153,.55); }
 .badge.b-sale50{ border-color: rgba(251,113,133,.55); box-shadow: 0 0 0 3px rgba(251,113,133,.08) inset; }
 
+
+.cat-green{ --cat-color:#22c55e; }
+.cat-blue{ --cat-color:#3b82f6; }
+.cat-purple{ --cat-color:#a855f7; }
+.cat-cyan{ --cat-color:#06b6d4; }
+.cat-yellow{ --cat-color:#eab308; }
+.cat-red{ --cat-color:#ef4444; }
+.cat-orange{ --cat-color:#f97316; }
+.cat-pink{ --cat-color:#ec4899; }
+.cat-gray{ --cat-color:#9ca3af; }
+.cat-default{ --cat-color:#94a3b8; }
+
+.catBadge{
+  border-color:color-mix(in srgb, var(--cat-color) 40%, transparent);
+  color:var(--cat-color);
+}
+.catBadge-dot{
+  background:var(--cat-color);
+}
+.catBadge-icon{
+  font-size:12px;
+  opacity:.9;
+}
+
 .catBadge{
   display:inline-flex;
   align-items:center;
@@ -921,7 +945,7 @@ function openProductPreview(productId){
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
           <b>${escapeHtml(p.name)}</b>
-          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge"><span class="catBadge-dot"></span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span></div>
+          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge ${getCategoryColorClass(p.category_id)}"><span class="catBadge-dot"></span><span class="catBadge-icon">${getCategoryIcon(p.category_id)}</span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span></div>
         </div>
       </div>
       ${badgeRow || ``}
@@ -1274,9 +1298,15 @@ function renderFilter(){
   const sel = document.getElementById("catFilter");
   const prev = sel.value || "all";
   sel.innerHTML = "";
+
   sel.appendChild(new Option("Alle Kategorien", "all"));
-  sel.appendChild(new Option("Keine Kategorie", "none"));
-  for(const c of categories) sel.appendChild(new Option(c.name, c.id));
+  sel.appendChild(new Option("▫️ Keine Kategorie", "none"));
+
+  for(const c of categories){
+    const icon = getCategoryIcon(c.id);
+    sel.appendChild(new Option(icon + " " + c.name, c.id));
+  }
+
   sel.value = prev;
   sel.onchange = renderProducts;
   document.getElementById("searchBox").oninput = renderProducts;
@@ -1327,6 +1357,52 @@ function bindShopTabs(){
   };
   updateShopTabs();
 }
+
+function getCategoryColorClass(catId){
+  const c = Array.isArray(categories) ? categories.find(x=>String(x.id)===String(catId)) : null;
+  if(!c || !c.name) return "cat-default";
+  const n = c.name.toLowerCase();
+
+  // Deutsche Kategorienamen
+  if(n.includes("langwaffe")) return "cat-green";
+  if(n.includes("kurzwaffe")) return "cat-blue";
+  if(n.includes("sniper")) return "cat-purple";
+  if(n.includes("spezial")) return "cat-red";
+  if(n.includes("munition")) return "cat-yellow";
+  if(n.includes("aufsätze") || n.includes("aufsatz")) return "cat-cyan";
+  if(n.includes("stichwaffe")) return "cat-orange";
+  if(n.includes("airdrop")) return "cat-pink";
+  if(n.includes("sonstig")) return "cat-gray";
+
+  // Englische Fallbacks (für zukünftige Kategorien)
+  if(n.includes("pistol")) return "cat-blue";
+  if(n.includes("sturm") || n.includes("gewehr") || n.includes("rifle")) return "cat-green";
+  if(n.includes("smg") || n.includes("mp")) return "cat-cyan";
+
+  return "cat-default";
+}
+}
+
+
+function getCategoryIcon(catId){
+  const c = Array.isArray(categories) ? categories.find(x=>String(x.id)===String(catId)) : null;
+  if(!c || !c.name) return "📦";
+  const n = c.name.toLowerCase();
+
+  if(n.includes("langwaffe")) return "🔫";
+  if(n.includes("kurzwaffe")) return "🔫";
+  if(n.includes("sniper")) return "🎯";
+  if(n.includes("spezial")) return "💥";
+  if(n.includes("munition")) return "🧨";
+  if(n.includes("aufsätze") || n.includes("aufsatz")) return "⚙️";
+  if(n.includes("stichwaffe")) return "🗡️";
+  if(n.includes("airdrop")) return "📦";
+  if(n.includes("sonstig")) return "📁";
+
+  // Fallback
+  return "📦";
+}
+
 function renderProducts(){
   const list = document.getElementById("productList");
   list.innerHTML = "";
@@ -1384,7 +1460,7 @@ function renderProducts(){
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
           <b>${escapeHtml(p.name)}</b>
-          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge"><span class="catBadge-dot"></span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span></div>
+          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge ${getCategoryColorClass(p.category_id)}"><span class="catBadge-dot"></span><span class="catBadge-icon">${getCategoryIcon(p.category_id)}</span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span></div>
         </div>
         ${!img ? `
           <button class="favBtn ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">
