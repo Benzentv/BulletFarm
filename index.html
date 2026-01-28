@@ -3047,6 +3047,18 @@ function renderBadgeChecks(st){
   });
 }
 
+
+function getCategoryNameById(id){
+  if(!id) return null;
+  try{
+    if(!Array.isArray(categories)) return null;
+    const c = categories.find(c=> String(c.id) === String(id));
+    return c ? c.name : null;
+  }catch(e){
+    return null;
+  }
+}
+
 function renderProductsTable(){
   const tb = document.getElementById("prodTable");
   if(!tb) return;
@@ -3081,7 +3093,7 @@ function renderProductsTable(){
       <td style="width:44px"><span title="Ziehen zum Sortieren" style="cursor:grab; font-weight:900" aria-label="drag">⠿</span></td>
       <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:56px;height:40px;object-fit:cover;border-radius:10px;border:1px solid var(--border)" onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
       <td><b>${escapeHtml(p.name)}</b><div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div></td>
-      <td class="muted">${p.category_id ? String(p.category_id).slice(0,8) : "—"}</td>
+      <td class="muted">${(getCategoryNameById(p.category_id) || (p.category_id ? String(p.category_id).slice(0,8) : "—"))}</td>
       <td>${badgesToHtml(p.badges, { where: "row" }) || `<span class="muted">—</span>`}</td>
       <td>${fmtRes(p.resources)}</td>
       <td style="white-space:nowrap">
