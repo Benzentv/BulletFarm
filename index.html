@@ -2507,6 +2507,12 @@ function renderAdminProducts(){
     ...categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`)
   ].join("");
 
+  const catFilterOptions = [
+    `<option value="all">Alle Kategorien</option>`,
+    `<option value="none">Ohne Kategorie</option>`,
+    ...categories.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`)
+  ].join("");
+
   el.innerHTML = `
     <div class="card" style="margin-top:10px">
       <div class="head" style="justify-content:space-between">
@@ -2607,7 +2613,15 @@ function renderAdminProducts(){
     </div>
 
     <div class="card" style="margin-top:12px">
-      <div class="head"><b>Produkte</b></div>
+      <div class="head" style="justify-content:space-between; gap:8px; flex-wrap:wrap">
+        <b>Produkte</b>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <select id="adminProdFilter" style="min-width:160px">
+            ${catFilterOptions}
+          </select>
+          <input id="adminProdSearch" placeholder="Suche (Name / ID)" style="min-width:160px" />
+        </div>
+      </div>
       <div class="body" style="overflow:auto">
         <table>
           <thead><tr><th></th><th>Bild</th><th>Name</th><th>Kategorie</th><th>Badges</th><th>Ressourcen</th><th>Aktion</th></tr></thead>
@@ -2663,6 +2677,15 @@ function renderAdminProducts(){
   };
 
   renderProductsTable();
+
+  const catFilterEl = document.getElementById("adminProdFilter");
+  const searchEl = document.getElementById("adminProdSearch");
+  if(catFilterEl){
+    catFilterEl.onchange = ()=>renderProductsTable();
+  }
+  if(searchEl){
+    searchEl.addEventListener("input", ()=>renderProductsTable());
+  }
 
   // Bundle-Builder UI
   (function setupBundleBuilder(){
@@ -3026,12 +3049,30 @@ function renderBadgeChecks(st){
 
 function renderProductsTable(){
   const tb = document.getElementById("prodTable");
-  tb.innerHTML = products.length ? "" : `<tr><td colspan="7" class="muted">Keine Produkte</td></tr>`;
+  if(!tb) return;
+
+  const filterEl = document.getElementById("adminProdFilter");
+  const searchEl = document.getElementById("adminProdSearch");
+  const filter = filterEl ? filterEl.value : "all";
+  const q = (searchEl ? searchEl.value : "").trim().toLowerCase();
+
+  let list = products.slice();
+  if(filter === "none") list = list.filter(p=>!p.category_id);
+  else if(filter && filter !== "all") list = list.filter(p=>String(p.category_id)===String(filter));
+  if(q){
+    list = list.filter(p=>{
+      const name = String(p.name||"").toLowerCase();
+      const id = String(p.id||"").toLowerCase();
+      return name.includes(q) || id.includes(q);
+    });
+  }
+
+  tb.innerHTML = list.length ? "" : `<tr><td colspan="7" class="muted">Keine Produkte</td></tr>`;
 
   // Drag & Drop Zustand
   let dragId = null;
 
-  products.forEach(p=>{
+  list.forEach(p=>{
     const tr = document.createElement("tr");
     tr.setAttribute("data-id", p.id);
     tr.draggable = true;
