@@ -3311,12 +3311,16 @@ function renderBadgeChecks(st){
     };
   });
 }
-gories.find(c=> String(c.id) === String(id));
+function getCategoryNameById(id){
+  try{
+    if(!Array.isArray(categories)) return null;
+    const c = categories.find(c=> String(c.id) === String(id));
     return c ? c.name : null;
   }catch(e){
     return null;
   }
 }
+
 
 function renderProductsTable(){
   const tb = document.getElementById("prodTable");
