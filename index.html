@@ -1413,7 +1413,12 @@ function renderFilter(){
 
   sel.value = prev;
   sel.onchange = renderProducts;
-  document.getElementById("searchBox").oninput = renderProducts;
+
+  const searchEl = document.getElementById("searchBox");
+  if(searchEl) searchEl.oninput = renderProducts;
+
+  const sortSel = document.getElementById("sortBox");
+  if(sortSel) sortSel.onchange = renderProducts;
 }
 
 
@@ -1519,6 +1524,23 @@ function renderProducts(){
   if(filter==="none") shown = shown.filter(p=>!p.category_id);
   else if(filter!=="all") shown = shown.filter(p=>p.category_id===filter);
   if(q) shown = shown.filter(p=>String(p.name||"").toLowerCase().includes(q));
+
+  const sortSel = document.getElementById("sortBox");
+  const sort = sortSel ? sortSel.value : "default";
+
+  if(sort === "price_asc"){
+    shown = shown.slice().sort((a,b)=>getProductPrice(a) - getProductPrice(b));
+  }else if(sort === "price_desc"){
+    shown = shown.slice().sort((a,b)=>getProductPrice(b) - getProductPrice(a));
+  }else if(sort === "popular"){
+    shown = shown.slice().sort((a,b)=>getProductPopularity(b) - getProductPopularity(a));
+  }else if(sort === "newest"){
+    shown = shown.slice().sort((a,b)=>{
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+  }
 
 
   // Bundles / Produkte trennen
@@ -3399,35 +3421,9 @@ function renderProductsTable(){
       p.resources = nextRes;
       renderProductsTable();
       if(typeof showToast === "function") showToast("Preis aktualisiert", p.name, { duration: 1600 });
-  tb.querySelectorAll(".editableBadges .badgeToggle").forEach(btn=>{
-    btn.onclick = async (e)=>{
-      e.stopPropagation();
-      const wrap = btn.closest(".editableBadges");
-      const prodId = wrap ? wrap.getAttribute("data-badges-product") : null;
-      if(!prodId) return;
-      const p = products.find(x=>String(x.id)===String(prodId));
-      if(!p) return;
-      const key = btn.getAttribute("data-badge-key");
-      const cur = new Set(normalizeBadges(p.badges || []));
-      if(cur.has(key)) cur.delete(key); else cur.add(key);
-      const next = Array.from(cur);
-      const u = await sb.from("products").update({ badges: next }).eq("id", p.id);
-      if(u.error){
-        console.error(u.error);
-        alert("Badges speichern fehlgeschlagen (RLS?)");
-        return;
-      }
-      p.badges = next;
-      renderProductsTable();
     };
   });
-
-    };
-  });
-
 }
-
-
 /* ========= Admin: Theme (mehr Farben + Live Vorschau + Speichern) ========= */
 function renderAdminTheme(){
   const el = document.getElementById("panelTheme");
@@ -4907,6 +4903,66 @@ window.checkout = function () {
     }
     originalCheckout();
 };
+</script>
+
+
+<script>
+/* === HARD FIX: Shop Sorting & Admin Badge Toggle === */
+(function(){
+  // SHOP SORT: force re-render on sort change
+  function wireSort(){
+    const sortBox = document.getElementById("sortBox");
+    if(sortBox){
+      sortBox.onchange = function(){
+        if(typeof renderProducts === "function"){
+          renderProducts();
+        }
+      };
+    }
+  }
+
+  // ADMIN BADGES: event delegation (clickable badges)
+  function wireAdminBadges(){
+    const table = document.getElementById("prodTable");
+    if(!table) return;
+
+    table.addEventListener("click", async (e)=>{
+      const btn = e.target.closest(".badgeToggle");
+      if(!btn) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const wrap = btn.closest(".editableBadges");
+      const prodId = wrap && wrap.dataset.badgesProduct;
+      if(!prodId || !window.products) return;
+
+      const p = products.find(x=>String(x.id)===String(prodId));
+      if(!p) return;
+
+      const key = btn.dataset.badgeKey;
+      if(!key) return;
+
+      const cur = new Set(normalizeBadges(p.badges || []));
+      cur.has(key) ? cur.delete(key) : cur.add(key);
+      const next = Array.from(cur);
+
+      try{
+        const u = await sb.from("products").update({ badges: next }).eq("id", prodId);
+        if(u.error){ console.error(u.error); alert("Badge speichern fehlgeschlagen"); return; }
+        p.badges = next;
+        if(typeof renderProductsTable === "function") renderProductsTable();
+      }catch(err){
+        console.error(err);
+      }
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", ()=>{
+    wireSort();
+    wireAdminBadges();
+  });
+})();
 </script>
 
 </body>
