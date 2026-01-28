@@ -159,7 +159,59 @@
 @media (max-width: 980px){ .products{grid-template-columns:repeat(3, minmax(220px,1fr));} }
 @media (max-width: 720px){ .products{grid-template-columns:repeat(2, minmax(220px,1fr));} }
 @media (max-width: 520px){ .products{grid-template-columns:1fr;} }
-    .prod{
+    
+.statusChip{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  border:1px solid rgba(248,250,252,.16);
+  background:rgba(15,23,42,.7);
+}
+.status-off{
+  border-color:rgba(248,113,113,.6);
+  color:#fecaca;
+}
+.status-soon{
+  border-color:rgba(250,204,21,.6);
+  color:#fef08a;
+}
+.prod.prod-disabled{
+  opacity:.5;
+  filter:grayscale(.4);
+}
+.prod.prod-soon{
+  border-color:rgba(250,204,21,.5);
+}
+
+.statusChip{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:11px;
+  border:1px solid rgba(248,250,252,.16);
+  background:rgba(15,23,42,.7);
+}
+.status-off{
+  border-color:rgba(248,113,113,.6);
+  color:#fecaca;
+}
+.status-soon{
+  border-color:rgba(250,204,21,.6);
+  color:#fef08a;
+}
+.prod.prod-disabled{
+  opacity:.5;
+  filter:grayscale(.4);
+}
+.prod.prod-soon{
+  border-color:rgba(250,204,21,.5);
+}
+.prod{
       border:1px solid var(--border);
       background: rgba(255,255,255,.03);
       border-radius:14px;
@@ -610,6 +662,13 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap">
           <select id="catFilter"></select>
+          <select id="sortBox">
+            <option value="default">Sortierung: Standard</option>
+            <option value="price_asc">🔼 Preis aufsteigend</option>
+            <option value="price_desc">🔽 Preis absteigend</option>
+            <option value="popular">⭐ Beliebt</option>
+            <option value="newest">🆕 Neu</option>
+          </select>
           <input id="searchBox" placeholder="Suchen…" />
           <button id="btnReload" class="primary">Neu laden</button>
         </div>
@@ -945,7 +1004,7 @@ function openProductPreview(productId){
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
           <b>${escapeHtml(p.name)}</b>
-          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge ${getCategoryColorClass(p.category_id)}"><span class="catBadge-dot"></span><span class="catBadge-icon">${getCategoryIcon(p.category_id)}</span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span></div>
+          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge ${getCategoryColorClass(p.category_id)}"><span class="catBadge-dot"></span><span class="catBadge-icon">${getCategoryIcon(p.category_id)}</span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span>${(() => { const st = (p.status || "active"); if(st==="disabled") return ' <span class="statusChip status-off">⛔ Deaktiviert</span>'; if(st==="coming_soon") return ' <span class="statusChip status-soon">🕒 Bald verfügbar</span>'; return ""; })()}</div>
         </div>
       </div>
       ${badgeRow || ``}
@@ -1082,6 +1141,26 @@ async function createBundleFromSelection(selectedIds, bundleMeta){
 }
 
 
+
+function getProductPrice(p){
+  // Versucht, Preis aus Ressourcen zu holen (z.B. Deadcoins)
+  try{
+    const res = Array.isArray(p.resources) ? p.resources : [];
+    const dc = res.find(r=>String(r.name||"").toLowerCase().includes("deadcoin"));
+    if(dc && typeof dc.amount === "number") return dc.amount;
+  }catch(_e){}
+  return 0;
+}
+
+function getProductPopularity(p){
+  // einfache Heuristik: Badge "popular" gibt Bonus, neuere Produkte bekommen leicht höheren Score
+  let score = 0;
+  const keys = normalizeBadges(p.badges || []);
+  if(keys.includes("popular")) score += 1000;
+  const created = p.created_at ? new Date(p.created_at).getTime() : 0;
+  if(created) score += created / 1e8;
+  return score;
+}
 /* ========= State ========= */
 let categories = [];
 let products = [];
@@ -1431,7 +1510,9 @@ function renderProducts(){
 
     const appendCard = (p)=>{
     const div = document.createElement("div");
-    div.className = "prod";
+    const __status = p.status || "active";
+    const __statusClass = (__status==="disabled") ? " prod-disabled" : (__status==="coming_soon" ? " prod-soon" : "");
+    div.className = "prod" + __statusClass;
     div.onclick = (e)=>{
       if(e.target.closest("button, select, input, a")) return;
       try{ openProductPreview(p.id); }catch(_e){}
@@ -1459,7 +1540,7 @@ function renderProducts(){
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
           <b>${escapeHtml(p.name)}</b>
-          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge ${getCategoryColorClass(p.category_id)}"><span class="catBadge-dot"></span><span class="catBadge-icon">${getCategoryIcon(p.category_id)}</span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span></div>
+          <div style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}"><span class="catBadge ${getCategoryColorClass(p.category_id)}"><span class="catBadge-dot"></span><span class="catBadge-icon">${getCategoryIcon(p.category_id)}</span>${escapeHtml(getCategoryNameById(p.category_id) || "—")}</span>${(() => { const st = (p.status || "active"); if(st==="disabled") return ' <span class="statusChip status-off">⛔ Deaktiviert</span>'; if(st==="coming_soon") return ' <span class="statusChip status-soon">🕒 Bald verfügbar</span>'; return ""; })()}</div>
         </div>
         ${!img ? `
           <button class="favBtn ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">
@@ -1486,7 +1567,7 @@ function renderProducts(){
         return `<div class="muted" style="margin-top:8px; font-weight:800">Bestand: ${st}</div>`;
       })()}
       <div style="height:8px"></div>
-      <button class="primary" data-add="${p.id}" ${(() => { const st=getStock(p.id); return (st!==null && st<=0) ? "disabled" : ""; })()}>In den Warenkorb</button>
+      <button class="primary" data-add="${p.id}" ${(() => { const st=getStock(p.id); const status=(p.status || "active"); if(status!=="active") return "disabled"; return (st!==null && st<=0) ? "disabled" : ""; })()}>In den Warenkorb</button>
     `;
 
     list.appendChild(div);
@@ -2620,6 +2701,11 @@ function renderAdminProducts(){
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px">
           <input id="pName" placeholder="Produktname" />
           <select id="pCat">${catOptions}</select>
+          <select id="pStatus" style="grid-column: 1 / -1">
+            <option value="active">✅ Aktiv</option>
+            <option value="coming_soon">🕒 Bald verfügbar</option>
+            <option value="disabled">⛔ Deaktiviert</option>
+          </select>
           <input id="pImg" placeholder="Bild URL (optional)" style="grid-column: 1 / -1" />
         </div>
 
@@ -2930,13 +3016,17 @@ renderBadgeChecks(st);
 
     if(!name){ alert("Produktname fehlt."); return; }
 
+    const statusEl = document.getElementById("pStatus");
+    const status = statusEl ? (statusEl.value || "active") : "active";
+
     const payload = {
       name,
       category_id: (cat==="none") ? null : cat,
       image_url,
       resources: st.resources || [],
       variants: (st.variants || []).filter(v=>v && String(v.name||'').trim()),
-      badges: normalizeBadges(st.badges || [])
+      badges: normalizeBadges(st.badges || []),
+      status
     };
 
     let r;
@@ -2981,6 +3071,8 @@ function fillEditorFromProduct(st, productId){
     nameEl.value = "";
     catEl.value = "none";
     imgEl.value = "";
+    const statusEl = document.getElementById("pStatus");
+    if(statusEl) statusEl.value = "active";
     updateImagePreview("");
     st.setResources([]);
     st.setVariants([{ name:"Standard", multiplier: 1 }]);
@@ -2993,6 +3085,8 @@ function fillEditorFromProduct(st, productId){
   nameEl.value = p.name || "";
   catEl.value = p.category_id ? p.category_id : "none";
   imgEl.value = p.image_url || "";
+  const statusEl = document.getElementById("pStatus");
+  if(statusEl) statusEl.value = p.status || "active";
   updateImagePreview(p.image_url || "");
   st.setResources(Array.isArray(p.resources) ? p.resources : []);
   st.setVariants(Array.isArray(p.variants) && p.variants.length ? p.variants : [{ name:"Standard", multiplier: 1 }]);
