@@ -330,6 +330,20 @@
   border-radius:999px;
   background:var(--primary-soft,#22c55e33);
 }
+
+.badgeToggle{
+  border-radius:999px;
+  border:1px solid var(--border-soft,#1f2933);
+  padding:2px 8px;
+  font-size:11px;
+  background:transparent;
+  color:inherit;
+  cursor:pointer;
+}
+.badgeToggle.active{
+  background:rgba(34,197,94,.12);
+  border-color:#22c55e;
+}
 .badgeRow{ display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
 .previewBox img{width:100%; height:100%; object-fit:cover; display:block}
 
@@ -756,6 +770,7 @@ header .tabs{ margin-left: auto; justify-content: flex-end; }
   <div id="panelTheme" style="display:none"></div>
   <div id="panelBackground" style="display:none"></div>
   <div id="panelStock" style="display:none"></div>
+  <div id="panelStats" style="display:none"></div>
   <div id="panelOrders" style="display:none"></div>
   <div id="panelNotify" style="display:none"></div>
   <div id="panelPromo" style="display:none"></div>
@@ -1173,6 +1188,16 @@ const BADGE_OPTIONS = [
   { key: "sale20",  label: "💸 20 % Rabatt" },
   { key: "sale50",  label: "💸 50 % Rabatt" },
 ];
+
+function badgesRowEditable(p){
+  const keys = normalizeBadges(p.badges || []);
+  const active = new Set(keys);
+  const items = BADGE_OPTIONS.map(opt=>{
+    const isOn = active.has(opt.key);
+    return `<button type="button" class="badgeToggle ${isOn ? "active" : ""}" data-badge-key="${opt.key}">${escapeHtml(opt.label)}</button>`;
+  }).join("");
+  return `<div class="badgeRow editableBadges" data-badges-product="${p.id}">${items}</div>`;
+}
 function normalizeBadges(b){
   const arr = Array.isArray(b) ? b : (b ? [b] : []);
   const allowed = new Set(BADGE_OPTIONS.map(x=>x.key));
@@ -2299,6 +2324,7 @@ const BASE_ADMIN_SECTIONS = [
   { id:"background", label:"Background" },
   { id:"stock", label:"Bestand" },
   { id:"promo", label:"Aktionen" },
+  { id:"stats", label:"Stats" },
   { id:"orders", label:"Bestellungen" },
   { id:"notify", label:"Notify" },
 ];
@@ -2311,7 +2337,7 @@ function getAdminSections(){
 }
 
 function showPanel(id){
-  ["panelProducts","panelCategories","panelTheme","panelBackground","panelStock","panelPromo","panelOrders","panelNotify"].forEach(pid=>{
+  ["panelProducts","panelCategories","panelTheme","panelBackground","panelStock","panelStats","panelPromo","panelOrders","panelNotify"].forEach(pid=>{
     document.getElementById(pid).style.display = (pid === "panel"+id[0].toUpperCase()+id.slice(1)) ? "" : "none";
   });
 
@@ -2320,6 +2346,7 @@ function showPanel(id){
   if(id==="theme") renderAdminTheme();
   if(id==="background") renderAdminBackground();
   if(id==="stock") renderAdminStock();
+  if(id==="stats") renderAdminStats();
   if(id==="orders") renderAdminOrders();
   if(id==="notify") renderAdminNotify();
   if(id==="promo") renderAdminPromo();
@@ -2465,6 +2492,12 @@ let editProductId = null;
 
 function fmtRes(res){
   return (res||[]).map(r=>`<span class="chip"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${formatDEInt(r.amount)}</b></span>`).join("");
+}
+
+function fmtResEditable(p){
+  const res = Array.isArray(p.resources) ? p.resources : [];
+  if(!res.length) return `<span class="muted">—</span>`;
+  return res.map((r, idx)=>`<span class="chip resChip" data-res-product="${p.id}" data-res-index="${idx}"><span class="dot" style="background:${r.color||'#fff'}"></span>${escapeHtml(r.name)}: <b>${formatDEInt(r.amount)}</b></span>`).join("");
 }
 function escapeHtml(s){
   return String(s ?? "").replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
@@ -3282,8 +3315,8 @@ function renderProductsTable(){
       <td>${p.image_url ? `<img src="${p.image_url}" alt="" style="width:56px;height:40px;object-fit:cover;border-radius:10px;border:1px solid var(--border)" onerror="this.style.display='none'">` : `<span class="muted">—</span>`}</td>
       <td><b>${escapeHtml(p.name)}</b><div class="muted" style="font-size:12px">${String(p.id).slice(0,8)}</div></td>
       <td class="muted">${(getCategoryNameById(p.category_id) || (p.category_id ? String(p.category_id).slice(0,8) : "—"))}</td>
-      <td>${badgesToHtml(p.badges, { where: "row" }) || `<span class="muted">—</span>`}</td>
-      <td>${fmtRes(p.resources)}</td>
+      <td>${badgesRowEditable(p)}</td>
+      <td>${fmtResEditable(p)}</td>
       <td style="white-space:nowrap">
         <button class="primary" data-edit="${p.id}">Bearbeiten</button>
         <button data-prev="${p.id}">Vorschau</button>
@@ -3339,6 +3372,59 @@ function renderProductsTable(){
   tb.querySelectorAll("[data-dup]").forEach(b=>b.onclick=()=>{
     duplicateProduct(b.getAttribute("data-dup"));
   });
+  tb.querySelectorAll(".resChip").forEach(chip=>{
+    chip.onclick = async (e)=>{
+      e.stopPropagation();
+      const prodId = chip.getAttribute("data-res-product");
+      const idx = Number(chip.getAttribute("data-res-index") || "0");
+      const p = products.find(x=>String(x.id)===String(prodId));
+      if(!p || !Array.isArray(p.resources) || !p.resources[idx]) return;
+      const r = p.resources[idx];
+      const current = (typeof r.amount === "number") ? r.amount : parseAmountDE(String(r.amount||""));
+      const val = prompt(`Neuer Betrag für ${r.name}:`, current != null ? String(current) : "");
+      if(val === null) return;
+      const parsed = parseAmountDE(val);
+      if(parsed == null){
+        alert("Ungültige Zahl.");
+        return;
+      }
+      const nextRes = p.resources.slice();
+      nextRes[idx] = { ...r, amount: parsed };
+      const u = await sb.from("products").update({ resources: nextRes }).eq("id", p.id);
+      if(u.error){
+        console.error(u.error);
+        alert("Speichern fehlgeschlagen (RLS?)");
+        return;
+      }
+      p.resources = nextRes;
+      renderProductsTable();
+      if(typeof showToast === "function") showToast("Preis aktualisiert", p.name, { duration: 1600 });
+  tb.querySelectorAll(".editableBadges .badgeToggle").forEach(btn=>{
+    btn.onclick = async (e)=>{
+      e.stopPropagation();
+      const wrap = btn.closest(".editableBadges");
+      const prodId = wrap ? wrap.getAttribute("data-badges-product") : null;
+      if(!prodId) return;
+      const p = products.find(x=>String(x.id)===String(prodId));
+      if(!p) return;
+      const key = btn.getAttribute("data-badge-key");
+      const cur = new Set(normalizeBadges(p.badges || []));
+      if(cur.has(key)) cur.delete(key); else cur.add(key);
+      const next = Array.from(cur);
+      const u = await sb.from("products").update({ badges: next }).eq("id", p.id);
+      if(u.error){
+        console.error(u.error);
+        alert("Badges speichern fehlgeschlagen (RLS?)");
+        return;
+      }
+      p.badges = next;
+      renderProductsTable();
+    };
+  });
+
+    };
+  });
+
 }
 
 
@@ -3954,6 +4040,325 @@ async function createTestOrderInternal(sendNotify){
   }
 }
 
+function renderAdminOrders(){
+  const el = document.getElementById("panelOrders");
+  const showTests = !isStatusOnly();
+  el.innerHTML = `
+    <div class="card" style="margin-top:10px">
+      <div class="head" style="justify-content:space-between; gap:10px; flex-wrap:wrap">
+        <b>Bestellungen</b>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+          <label class="muted" style="font-size:12px">Filter:</label>
+          <select id="orderFilter">
+            <option value="all">Alle</option>
+            <option value="offen">Offen</option>
+            <option value="bearbeitet">Erledigt</option>
+            <option value="storniert">Storniert</option>
+            <option value="archiviert">Archiv</option>
+          </select>
+          <div id="ordersDash" class="muted" style="font-size:12px; margin-right:6px"></div>
+          ${showTests ? `<button id="btnTestOrder" class="primary">Testbestellung</button>
+          <button id="btnTestOrderNotify" class="success">Test + Discord</button>` : ``}
+          <button id="btnLoadOrders">Laden</button>
+        </div>
+      </div>
+      <div class="body" style="overflow:auto">
+        <table>
+          <thead><tr><th>Zeit</th><th>Kunde</th><th>Status</th><th>Aktion</th></tr></thead>
+          <tbody id="ordersTable"></tbody>
+        </table>
+        <div class="muted" style="font-size:12px; margin-top:10px">
+          Tipp: Klick auf eine Bestellung zum Ein-/Ausklappen.
+        </div>
+      </div>
+    </div>
+  `;
+
+  const sel = document.getElementById("orderFilter");
+  sel.value = ordersFilter;
+  sel.onchange = async ()=>{
+    ordersFilter = sel.value;
+    await loadOrders();
+  };
+
+  document.getElementById("btnLoadOrders").onclick = loadOrders;
+  updateOrdersDashboard(ordersCache);
+  if(showTests){
+    document.getElementById("btnTestOrder").onclick = createTestOrder;
+    document.getElementById("btnTestOrderNotify").onclick = createTestOrderAndNotify;
+  }
+}
+
+function orderResTotals(items){
+  const totals = new Map();
+  for(const it of (items||[])){
+    const qty = Number(it.qty||1) || 1;
+    const mult = Number(it.variantMultiplier||1) || 1;
+    for(const r of (it.resources||[])){
+      const name = String(r.name||"").trim();
+      if(!name) continue;
+      const amount = (Number(r.amount||0)||0) * qty * mult;
+      const prev = totals.get(name) || { amount:0, color: r.color || "#fff" };
+      prev.amount += amount;
+      if(r.color) prev.color = r.color;
+      totals.set(name, prev);
+    }
+  }
+  return totals;
+}
+
+function renderTotalsChips(totals){
+  const entries = Array.from(totals.entries()).sort((a,b)=>a[0].localeCompare(b[0]));
+  if(entries.length===0) return `<span class="muted">—</span>`;
+  return entries.map(([name,v]) =>
+    `<span class="chip"><span class="dot" style="background:${v.color||"#fff"}"></span>${escapeHtml(name)}: <b>${formatDEInt(v.amount)}</b></span>`
+  ).join(" ");
+}
+
+function renderOrderDetails(o){
+  const customer = o.customer || {};
+  const items = o.items || [];
+  const totals = orderResTotals(items);
+
+  const itemLines = (items.length ? items : []).map(it=>{
+    const v = it.variantName && it.variantName !== "Standard" ? ` <span class="muted">(${escapeHtml(it.variantName)})</span>` : "";
+    const mult = (Number(it.variantMultiplier||1) !== 1) ? ` <span class="muted">×${Number(it.variantMultiplier||1)}</span>` : "";
+    return `
+      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--border)">
+        <div><b>${escapeHtml(it.name||"Unbekannt")}</b>${v}${mult}</div>
+        <div class="muted">Menge: <b style="color:var(--text)">${Number(it.qty||1)||1}</b></div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div style="padding:10px 10px 12px; border:1px solid var(--border); border-radius:14px; background: rgba(255,255,255,.02)">
+      <div style="display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap">
+        <div>
+          <div style="font-weight:900; font-size:14px">👤 ${escapeHtml(customer.name || "—")}</div>
+          <div class="muted" style="font-size:12px">📞 ${escapeHtml(customer.phone || "—")}</div>
+          <div class="muted" style="font-size:12px">ID: ${escapeHtml(String(o.id))}</div>
+        </div>
+        <div>
+          <div class="muted" style="font-size:12px">Ressourcen gesamt</div>
+          <div class="chips" style="margin-top:6px">${renderTotalsChips(totals)}</div>
+        </div>
+      </div>
+
+      <div style="height:10px"></div>
+      <div class="muted" style="font-size:12px; margin-bottom:6px">Produkte</div>
+      <div>${itemLines || `<div class="muted">—</div>`}</div>
+    </div>
+  `;
+}
+
+async function createTestOrder(){
+  const res = await createTestOrderInternal(false);
+  if(res?.ok){
+    alert("✅ Testbestellung erstellt. ID: " + String(res.orderId).slice(0,8));
+    await loadOrders();
+  }
+}
+
+async function createTestOrderAndNotify(){
+  const res = await createTestOrderInternal(true);
+  if(res?.ok){
+    alert("✅ Test + Discord gesendet. ID: " + String(res.orderId).slice(0,8));
+    await loadOrders();
+  }
+}
+
+async function createTestOrderInternal(sendNotify){
+  try{
+    // 1–2 zufällige Produkte
+    const pick = (arr)=>arr[Math.floor(Math.random()*arr.length)];
+    const n = Math.min(2, Math.max(1, products.length ? (Math.random()<0.5?1:2) : 0));
+    if(!products.length) return { ok:false };
+
+    const chosen = [];
+    const used = new Set();
+    while(chosen.length < n){
+      const p = pick(products);
+      if(used.has(p.id)) continue;
+      used.add(p.id);
+
+      // Varianten (optional)
+      const vars = Array.isArray(p.variants) ? p.variants : [];
+      const v = vars.length ? vars[0] : { name:"Standard", multiplier:1 };
+
+      chosen.push({
+        productId: p.id,
+        name: p.name,
+        qty: 1,
+        variantName: v.name || "Standard",
+        variantMultiplier: Number(v.multiplier||1) || 1,
+        resources: p.resources || []
+      });
+    }
+
+    const payload = {
+      status: "offen",
+      customer: { name:"Testkunde", phone:"000000" },
+      items: chosen
+    };
+
+    const ins = await sb.from("orders").insert(payload).select("id").maybeSingle();
+    if(ins.error){ console.error(ins.error); return { ok:false }; }
+
+    if(sendNotify){
+      const nfy = window.__shopSettings?.notify;
+      if(nfy?.enabled && nfy?.edgeFunctionUrl){
+        try{
+          await fetch(nfy.edgeFunctionUrl, {
+            method:"POST",
+            headers:{
+              "Content-Type":"application/json",
+              "Authorization":"Bearer " + SUPABASE_ANON_KEY
+            },
+            body: JSON.stringify({ order_id: ins.data?.id, order: payload })
+          });
+        }catch(e){
+          console.warn("Notify failed", e);
+        }
+      }
+    }
+
+    return { ok:true, orderId: ins.data?.id };
+  }catch(e){
+    console.error(e);
+    return { ok:false };
+  }
+}
+
+
+function renderAdminStats(){
+  const el = document.getElementById("panelStats");
+  if(!el) return;
+  el.innerHTML = `<div class="card" style="margin-top:10px"><div class="head"><b>Stats</b></div><div class="body"><div class="muted">Lade Statistiken…</div></div></div>`;
+
+  (async ()=>{
+    try{
+      const since7 = new Date(Date.now() - 7*24*60*60*1000);
+      const iso7 = since7.toISOString();
+      const today = new Date();
+      today.setHours(0,0,0,0);
+      const isoToday = today.toISOString();
+
+      const r = await sb.from("orders")
+        .select("id, status, created_at, items")
+        .gte("created_at", iso7)
+        .order("created_at", { ascending: false });
+
+      if(r.error){
+        console.error(r.error);
+        el.innerHTML = `<div class="card" style="margin-top:10px"><div class="body"><div class="muted">Fehler beim Laden der Statistiken (Console prüfen).</div></div></div>`;
+        return;
+      }
+
+      const orders = Array.isArray(r.data) ? r.data : [];
+      const productStats = new Map();
+      const revenue7 = new Map();
+      const revenueToday = new Map();
+      const catRevenue = new Map();
+
+      const prodMap = new Map(products.map(p=>[String(p.id), p]));
+
+      for(const o of orders){
+        if(o.status === "storniert") continue;
+        const created = o.created_at ? new Date(o.created_at) : null;
+        const isToday = created && created >= today;
+
+        const items = Array.isArray(o.items) ? o.items : [];
+        for(const it of items){
+          const pid = String(it.productId || it.product_id || "");
+          if(!pid) continue;
+          const qty = Number(it.qty || 1) * Number(it.variantMultiplier || 1);
+          const p = prodMap.get(pid);
+          const name = it.name || p?.name || pid;
+          const catId = p?.category_id || null;
+
+          if(!productStats.has(pid)){
+            productStats.set(pid, { id: pid, name, qty: 0 });
+          }
+          productStats.get(pid).qty += qty;
+
+          const resArr = Array.isArray(it.resources) ? it.resources : [];
+          for(const r0 of resArr){
+            const rName = String(r0.name || "").trim() || "Unbekannt";
+            const amount = Number(r0.amount || 0) * qty;
+
+            const prev7 = revenue7.get(rName) || 0;
+            revenue7.set(rName, prev7 + amount);
+            if(isToday){
+              const prevT = revenueToday.get(rName) || 0;
+              revenueToday.set(rName, prevT + amount);
+            }
+
+            if(catId){
+              const cat = categories.find(c=>String(c.id)===String(catId));
+              const cname = cat?.name || "Unbekannt";
+              const k = cname + "||" + rName;
+              const prevC = catRevenue.get(k) || 0;
+              catRevenue.set(k, prevC + amount);
+            }
+          }
+        }
+      }
+
+      const topProducts = Array.from(productStats.values())
+        .sort((a,b)=>b.qty - a.qty)
+        .slice(0,5);
+
+      const fmtRows = (map)=>{
+        if(map.size===0) return "<div class='muted'>Keine Daten.</div>";
+        return Array.from(map.entries()).sort((a,b)=>b[1]-a[1]).map(([name, amt])=>
+          `<div style="display:flex; justify-content:space-between; gap:8px"><span>${escapeHtml(name)}</span><b>${formatDEInt(Math.round(amt))}</b></div>`
+        ).join("");
+      };
+
+      let topCatHtml = "<div class='muted'>Keine Daten.</div>";
+      if(catRevenue.size){
+        const agg = new Map();
+        for(const [key, val] of catRevenue.entries()){
+          const [cname, rname] = key.split("||");
+          const k = cname; // aggregiert über Ressourcen
+          agg.set(k, (agg.get(k)||0) + val);
+        }
+        const best = Array.from(agg.entries()).sort((a,b)=>b[1]-a[1])[0];
+        if(best){
+          topCatHtml = `<div><div><b>${escapeHtml(best[0])}</b></div><div class="muted" style="margin-top:4px">Umsatz (7 Tage): ${formatDEInt(Math.round(best[1]))}</div></div>`;
+        }
+      }
+
+      el.innerHTML = `
+        <div class="card" style="margin-top:10px">
+          <div class="head"><b>Stats</b></div>
+          <div class="body" style="display:grid; gap:16px; grid-template-columns: repeat(auto-fit, minmax(220px,1fr));">
+            <div>
+              <h3 style="font-size:14px; margin:0 0 6px">Top 5 Produkte (Menge)</h3>
+              ${topProducts.length ? topProducts.map(p=>`<div style="display:flex; justify-content:space-between; gap:8px"><span>${escapeHtml(p.name)}</span><span class="muted">×${p.qty}</span></div>`).join("") : "<div class='muted'>Keine Daten.</div>"}
+            </div>
+            <div>
+              <h3 style="font-size:14px; margin:0 0 6px">Umsatz heute</h3>
+              ${fmtRows(revenueToday)}
+            </div>
+            <div>
+              <h3 style="font-size:14px; margin:0 0 6px">Umsatz letzte 7 Tage</h3>
+              ${fmtRows(revenue7)}
+            </div>
+            <div>
+              <h3 style="font-size:14px; margin:0 0 6px">Top-Kategorie (Umsatz 7 Tage)</h3>
+              ${topCatHtml}
+            </div>
+          </div>
+        </div>
+      `;
+    }catch(e){
+      console.error(e);
+      el.innerHTML = `<div class="card" style="margin-top:10px"><div class="body"><div class="muted">Fehler beim Berechnen der Statistiken (Console prüfen).</div></div></div>`;
+    }
+  })();
+}
 async function loadOrders(){
   const tb = document.getElementById("ordersTable");
 
