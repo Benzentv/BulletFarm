@@ -902,7 +902,7 @@ function openProductPreview(productId){
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
           <b>${escapeHtml(p.name)}</b>
-          <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
+          <div class="muted" style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}">${escapeHtml(getCategoryNameById(p.category_id) || "—")}</div>
         </div>
       </div>
       ${badgeRow || ``}
@@ -1365,7 +1365,7 @@ function renderProducts(){
       <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px">
         <div style="min-width:0">
           <b>${escapeHtml(p.name)}</b>
-          <div class="muted" style="font-size:12px; margin-top:4px">${escapeHtml(p.category_id || "—")}</div>
+          <div class="muted" style="font-size:12px; margin-top:4px" title="ID: ${escapeHtml(String(p.id || ""))}">${escapeHtml(getCategoryNameById(p.category_id) || "—")}</div>
         </div>
         ${!img ? `
           <button class="favBtn ${favActive ? "active" : ""}" data-fav="${p.id}" title="Merken">
